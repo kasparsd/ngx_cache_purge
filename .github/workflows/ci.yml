@@ -33,7 +33,7 @@ jobs:
           docker compose version
 
       - name: Build docker image
-        run: make image
+        run: docker compose build
 
       - name: Run tests
         run: docker compose run --rm dev make test
