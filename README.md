@@ -328,6 +328,83 @@ You can test it by running:
 `$ make test`
 
 
+Docker Validation Config
+========================
+For manual validation inside the development container, the repository includes
+an example nginx configuration at `examples/docker-validation.conf`.
+
+It provides separate locations for these behaviors:
+
+- exact-key soft purge (`/soft`)
+- soft purge with `proxy_cache_use_stale` on upstream `500` (`/stale`)
+- wildcard soft purge (`/wild`)
+- `purge_all` soft purge (`/purge_all`)
+- separate-location `zone key soft` syntax (`/separate` and `/purge_separate/...`)
+
+Start it inside the container after building nginx:
+
+    make shell
+    make nginx-build
+    rm -rf /tmp/ngx_cache_purge_demo_* /tmp/ngx_cache_purge_temp
+    mkdir -p /tmp/ngx_cache_purge_temp /tmp/logs
+    /opt/nginx/sbin/nginx -p /tmp -c /workspace/examples/docker-validation.conf
+
+Exact-key soft purge flow:
+
+    curl -i 'http://127.0.0.1:8080/soft/item?t=soft'
+    curl -i 'http://127.0.0.1:8080/soft/item?t=soft'
+    curl -i -X PURGE 'http://127.0.0.1:8080/soft/item?t=soft'
+    curl -i 'http://127.0.0.1:8080/soft/item?t=soft'
+    curl -i 'http://127.0.0.1:8080/soft/item?t=soft'
+
+Expected `X-Cache-Status` values are `MISS`, `HIT`, purge `200`, `EXPIRED`,
+then `HIT`.
+
+`proxy_cache_use_stale` flow:
+
+    curl -i 'http://127.0.0.1:8080/stale/item?t=demo'
+    curl -i -X PURGE 'http://127.0.0.1:8080/stale/item?t=demo'
+    curl -i -H 'X-Origin-Fail: 1' 'http://127.0.0.1:8080/stale/item?t=demo'
+
+The final request should return cached content with `X-Cache-Status: STALE`
+because the expired entry exists but the origin is forced to return `500`.
+
+Wildcard soft purge flow:
+
+    curl -i 'http://127.0.0.1:8080/wild/pass-one'
+    curl -i 'http://127.0.0.1:8080/wild/pass-two'
+    curl -i 'http://127.0.0.1:8080/wild/other'
+    curl -i -X PURGE 'http://127.0.0.1:8080/wild/pass*'
+    curl -i 'http://127.0.0.1:8080/wild/pass-one'
+    curl -i 'http://127.0.0.1:8080/wild/pass-two'
+    curl -i 'http://127.0.0.1:8080/wild/other'
+
+The two `pass*` entries should come back as `EXPIRED`, while `/wild/other`
+should remain `HIT`.
+
+`purge_all` soft purge flow:
+
+    curl -i 'http://127.0.0.1:8080/purge_all/one?t=1'
+    curl -i 'http://127.0.0.1:8080/purge_all/two?t=2'
+    curl -i -X PURGE 'http://127.0.0.1:8080/purge_all/anything'
+    curl -i 'http://127.0.0.1:8080/purge_all/one?t=1'
+    curl -i 'http://127.0.0.1:8080/purge_all/two?t=2'
+
+The post-purge requests should return `X-Cache-Status: EXPIRED`.
+
+Separate-location soft purge flow:
+
+    curl -i 'http://127.0.0.1:8080/separate/item?t=sep'
+    curl -i -X PURGE 'http://127.0.0.1:8080/purge_separate/separate/item?t=sep'
+    curl -i 'http://127.0.0.1:8080/separate/item?t=sep'
+
+The final request should return `X-Cache-Status: EXPIRED`.
+
+Stop the validation nginx instance with:
+
+    kill "$(cat /tmp/ngx-cache-purge-validation.pid)"
+
+
 License
 =======
     Copyright (c) 2009-2014, FRiCKLE <info@frickle.com>
