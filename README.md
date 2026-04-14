@@ -15,6 +15,37 @@ Status
 This module is production-ready.
 
 
+Docker Build Environment
+========================
+The repository includes a containerized build environment with:
+
+- Debian-based build tooling for NGINX modules
+- downloaded NGINX source in `/opt/nginx-src/nginx-$NGINX_VERSION`
+- `Test::Nginx` installed from `openresty/test-nginx`
+
+Build the image:
+
+    make image
+
+Open a shell in the container with the repository mounted at `/workspace`:
+
+    make shell
+
+Configure and build NGINX with this module. If you run this on the host, the
+Makefile will execute the build inside the container automatically. If you run
+it from a shell inside the container, it will build directly there.
+
+    make nginx-build
+
+Print the resulting `nginx -V` with the same host/container-agnostic behavior:
+
+    make nginx-version
+
+Run the test suite after building:
+
+    make test
+
+
 Configuration directives (same location syntax)
 ===============================================
 fastcgi_cache_purge
