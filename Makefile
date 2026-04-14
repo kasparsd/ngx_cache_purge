@@ -3,39 +3,17 @@ NGINX_SRC_DIR ?= /opt/nginx-src/nginx-$(NGINX_VERSION)
 NGINX_BUILD_PREFIX ?= /opt/nginx
 MODULE_DIR ?= /workspace
 JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
-DOCKER_COMPOSE ?= docker compose
-DOCKER_SERVICE ?= dev
-IN_CONTAINER ?= $(shell [ -f /.dockerenv ] && echo 1 || echo 0)
 
-.PHONY: help image shell nginx-build nginx-version format test \
-	_docker-run _nginx-build _nginx-version _format _test
+.PHONY: help nginx-build nginx-version format test
 
 help:
 	@printf '%s\n' \
-		'make image            Build the development image' \
-		'make shell            Open a shell in the development container' \
 		'make nginx-build      Build NGINX with this module' \
 		'make nginx-version    Build info for the installed NGINX binary' \
 		'make format           Run the repository formatter' \
 		'make test             Run the Test::Nginx suite'
 
-image:
-	$(DOCKER_COMPOSE) build
-
-shell:
-	$(DOCKER_COMPOSE) run --rm $(DOCKER_SERVICE)
-
-_docker-run:
-	$(DOCKER_COMPOSE) run --rm $(DOCKER_SERVICE) make $(TARGET)
-
 nginx-build:
-ifeq ($(IN_CONTAINER),1)
-	$(MAKE) _nginx-build
-else
-	$(MAKE) TARGET=_nginx-build _docker-run
-endif
-
-_nginx-build:
 	test -d "$(NGINX_SRC_DIR)"
 	cd "$(NGINX_SRC_DIR)" && ./configure \
 		--prefix="$(NGINX_BUILD_PREFIX)" \
@@ -46,32 +24,12 @@ _nginx-build:
 	$(MAKE) -C "$(NGINX_SRC_DIR)" install
 
 nginx-version:
-ifeq ($(IN_CONTAINER),1)
-	$(MAKE) _nginx-version
-else
-	$(DOCKER_COMPOSE) run --rm $(DOCKER_SERVICE) sh -lc 'make _nginx-build >/tmp/nginx-build.log && make _nginx-version'
-endif
-
-_nginx-version:
 	"$(NGINX_BUILD_PREFIX)/sbin/nginx" -V
 
 format:
-ifeq ($(IN_CONTAINER),1)
-	$(MAKE) _format
-else
-	$(MAKE) TARGET=_format _docker-run
-endif
-
-_format:
-	./.format.sh
+	astyle -v --options='.astylerc' ngx_cache_purge_module.c || (echo 'astyle failed'; exit 1)
+	dos2unix --quiet ngx_cache_purge_module.c || (echo 'dos2unix failed'; exit 2)
 
 test:
-ifeq ($(IN_CONTAINER),1)
-	$(MAKE) _test
-else
-	$(MAKE) TARGET=_test _docker-run
-endif
-
-_test:
-	$(MAKE) _nginx-build >/tmp/nginx-build.log
+	$(MAKE) nginx-build >/tmp/nginx-build.log
 	TEST_NGINX_BINARY="$(NGINX_BUILD_PREFIX)/sbin/nginx" prove t
