@@ -11,11 +11,13 @@ ENV PATH=${NGINX_BUILD_PREFIX}/sbin:${PATH}
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        astyle \
         bash \
         build-essential \
         ca-certificates \
         cpanminus \
         curl \
+        dos2unix \
         git \
         libpcre3-dev \
         libssl-dev \

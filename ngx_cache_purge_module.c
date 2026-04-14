@@ -53,8 +53,10 @@ static size_t ngx_http_cache_purge_content_type_xml_size = sizeof(ngx_http_cache
 static size_t ngx_http_cache_purge_content_type_text_size = sizeof(ngx_http_cache_purge_content_type_text);
 
 static const char ngx_http_cache_purge_body_templ_json[] = "{\"Key\": \"%s\"}";
-static const char ngx_http_cache_purge_body_templ_html[] = "<html><head><title>Successful purge</title></head><body bgcolor=\"white\"><center><h1>Successful purge</h1><p>Key : %s</p></center></body></html>";
-static const char ngx_http_cache_purge_body_templ_xml[] = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><status><Key><![CDATA[%s]]></Key></status>";
+static const char ngx_http_cache_purge_body_templ_html[] =
+    "<html><head><title>Successful purge</title></head><body bgcolor=\"white\"><center><h1>Successful purge</h1><p>Key : %s</p></center></body></html>";
+static const char ngx_http_cache_purge_body_templ_xml[] =
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><status><Key><![CDATA[%s]]></Key></status>";
 static const char ngx_http_cache_purge_body_templ_text[] = "Key:%s\n";
 
 static size_t ngx_http_cache_purge_body_templ_json_size = sizeof(ngx_http_cache_purge_body_templ_json);
@@ -122,7 +124,7 @@ ngx_int_t   ngx_http_uwsgi_cache_purge_handler(ngx_http_request_t *r);
 # endif /* NGX_HTTP_UWSGI */
 
 char        *ngx_http_cache_purge_response_type_conf(ngx_conf_t *cf,
-                ngx_command_t *cmd, void *conf);
+        ngx_command_t *cmd, void *conf);
 static ngx_int_t
 ngx_http_purge_file_cache_noop(ngx_tree_ctx_t *ctx, ngx_str_t *path);
 static ngx_int_t
@@ -219,12 +221,14 @@ static ngx_command_t  ngx_http_cache_purge_module_commands[] = {
 # endif /* NGX_HTTP_UWSGI */
 
 
-    { ngx_string("cache_purge_response_type"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
-      ngx_http_cache_purge_response_type_conf,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      0,
-      NULL },
+    {
+        ngx_string("cache_purge_response_type"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+        ngx_http_cache_purge_response_type_conf,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        0,
+        NULL
+    },
 
     ngx_null_command
 };
@@ -1320,15 +1324,14 @@ ngx_http_uwsgi_cache_purge_handler(ngx_http_request_t *r) {
 
 
 char *
-ngx_http_cache_purge_response_type_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
+ngx_http_cache_purge_response_type_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_http_cache_purge_loc_conf_t   *cplcf;
     ngx_str_t                         *value;
 
     cplcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_cache_purge_module);
 
     /* check for duplicates / collisions */
-    if (cplcf->resptype != NGX_CONF_UNSET_UINT && cf->cmd_type == NGX_HTTP_LOC_CONF )  {
+    if (cplcf->resptype != NGX_CONF_UNSET_UINT && cf->cmd_type == NGX_HTTP_LOC_CONF)  {
         return "is duplicate";
     }
 
@@ -1337,14 +1340,14 @@ ngx_http_cache_purge_response_type_conf(ngx_conf_t *cf, ngx_command_t *cmd, void
         return "is invalid paramter, ex) cache_purge_response_type (html|json|xml|text)";
     }
 
-    if (cf->args->nelts > 2 ) {
+    if (cf->args->nelts > 2) {
         return "is required only 1 option, ex) cache_purge_response_type (html|json|xml|text)";
     }
 
     value = cf->args->elts;
 
     if (ngx_strcmp(value[1].data, "html") != 0 && ngx_strcmp(value[1].data, "json") != 0
-        && ngx_strcmp(value[1].data, "xml") != 0 && ngx_strcmp(value[1].data, "text") != 0) {
+            && ngx_strcmp(value[1].data, "xml") != 0 && ngx_strcmp(value[1].data, "text") != 0) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                            "invalid parameter \"%V\", expected"
                            " \"(html|json|xml|text)\" keyword", &value[1]);
@@ -1432,8 +1435,7 @@ ngx_http_purge_file_cache_soft_partial_file(ngx_tree_ctx_t *ctx, ngx_str_t *path
 
 static ngx_int_t
 ngx_http_cache_purge_partial_match(ngx_http_cache_purge_partial_ctx_t *data,
-                                   ngx_str_t *path, ngx_log_t *log)
-{
+                                   ngx_str_t *path, ngx_log_t *log) {
     ngx_file_t    file;
     ssize_t       n;
 
@@ -1470,7 +1472,7 @@ ngx_http_cache_purge_partial_match(ngx_http_cache_purge_partial_ctx_t *data,
     if (ngx_strncasecmp(data->key_in_file, data->key_partial,
                         data->key_len) == 0) {
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
-                      "match found for file \"%s\"", path->data);
+                       "match found for file \"%s\"", path->data);
         return 1;
     }
 
@@ -1478,8 +1480,7 @@ ngx_http_cache_purge_partial_match(ngx_http_cache_purge_partial_ctx_t *data,
 }
 
 static ngx_int_t
-ngx_http_cache_purge_filename_key(ngx_str_t *path, u_char *key)
-{
+ngx_http_cache_purge_filename_key(ngx_str_t *path, u_char *key) {
     u_char      *p;
     ngx_uint_t   i;
     ngx_uint_t   hi, lo;
@@ -1490,7 +1491,7 @@ ngx_http_cache_purge_filename_key(ngx_str_t *path, u_char *key)
         p--;
     }
 
-    if ((size_t) (path->data + path->len - p) != 2 * NGX_HTTP_CACHE_KEY_LEN) {
+    if ((size_t)(path->data + path->len - p) != 2 * NGX_HTTP_CACHE_KEY_LEN) {
         return NGX_DECLINED;
     }
 
@@ -1502,15 +1503,14 @@ ngx_http_cache_purge_filename_key(ngx_str_t *path, u_char *key)
             return NGX_DECLINED;
         }
 
-        key[i] = (u_char) ((hi << 4) | lo);
+        key[i] = (u_char)((hi << 4) | lo);
     }
 
     return NGX_OK;
 }
 
 static ngx_http_file_cache_node_t *
-ngx_http_cache_purge_lookup(ngx_http_file_cache_t *cache, u_char *key)
-{
+ngx_http_cache_purge_lookup(ngx_http_file_cache_t *cache, u_char *key) {
     ngx_int_t                    rc;
     ngx_rbtree_key_t             node_key;
     ngx_rbtree_node_t           *node, *sentinel;
@@ -1548,8 +1548,7 @@ ngx_http_cache_purge_lookup(ngx_http_file_cache_t *cache, u_char *key)
 }
 
 static ngx_int_t
-ngx_http_cache_purge_soft_header(ngx_str_t *path, ngx_log_t *log)
-{
+ngx_http_cache_purge_soft_header(ngx_str_t *path, ngx_log_t *log) {
     ngx_file_t                     file;
     ngx_http_file_cache_header_t   h;
     ssize_t                        n;
@@ -1619,8 +1618,7 @@ ngx_http_cache_purge_soft_header(ngx_str_t *path, ngx_log_t *log)
 
 static ngx_int_t
 ngx_http_cache_purge_soft_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
-                               ngx_log_t *log)
-{
+                               ngx_log_t *log) {
     ngx_int_t                      rc;
     ngx_http_file_cache_node_t  *node;
     u_char                       key[NGX_HTTP_CACHE_KEY_LEN];
@@ -1785,36 +1783,36 @@ ngx_http_cache_purge_send_response(ngx_http_request_t *r) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    switch(cplcf->resptype) {
+    switch (cplcf->resptype) {
 
-        case NGX_REPONSE_TYPE_JSON:
-            resp_ct = ngx_http_cache_purge_content_type_json;
-            resp_ct_size = ngx_http_cache_purge_content_type_json_size;
-            resp_body = ngx_http_cache_purge_body_templ_json;
-            resp_body_size = ngx_http_cache_purge_body_templ_json_size;
-            break;
+    case NGX_REPONSE_TYPE_JSON:
+        resp_ct = ngx_http_cache_purge_content_type_json;
+        resp_ct_size = ngx_http_cache_purge_content_type_json_size;
+        resp_body = ngx_http_cache_purge_body_templ_json;
+        resp_body_size = ngx_http_cache_purge_body_templ_json_size;
+        break;
 
-        case NGX_REPONSE_TYPE_XML:
-            resp_ct = ngx_http_cache_purge_content_type_xml;
-            resp_ct_size = ngx_http_cache_purge_content_type_xml_size;
-            resp_body = ngx_http_cache_purge_body_templ_xml;
-            resp_body_size = ngx_http_cache_purge_body_templ_xml_size;
-            break;
+    case NGX_REPONSE_TYPE_XML:
+        resp_ct = ngx_http_cache_purge_content_type_xml;
+        resp_ct_size = ngx_http_cache_purge_content_type_xml_size;
+        resp_body = ngx_http_cache_purge_body_templ_xml;
+        resp_body_size = ngx_http_cache_purge_body_templ_xml_size;
+        break;
 
-        case NGX_REPONSE_TYPE_TEXT:
-            resp_ct = ngx_http_cache_purge_content_type_text;
-            resp_ct_size = ngx_http_cache_purge_content_type_text_size;
-            resp_body = ngx_http_cache_purge_body_templ_text;
-            resp_body_size = ngx_http_cache_purge_body_templ_text_size;
-            break;
+    case NGX_REPONSE_TYPE_TEXT:
+        resp_ct = ngx_http_cache_purge_content_type_text;
+        resp_ct_size = ngx_http_cache_purge_content_type_text_size;
+        resp_body = ngx_http_cache_purge_body_templ_text;
+        resp_body_size = ngx_http_cache_purge_body_templ_text_size;
+        break;
 
-        default:
-        case NGX_REPONSE_TYPE_HTML:
-            resp_ct = ngx_http_cache_purge_content_type_html;
-            resp_ct_size = ngx_http_cache_purge_content_type_html_size;
-            resp_body = ngx_http_cache_purge_body_templ_html;
-            resp_body_size = ngx_http_cache_purge_body_templ_html_size;
-            break;
+    default:
+    case NGX_REPONSE_TYPE_HTML:
+        resp_ct = ngx_http_cache_purge_content_type_html;
+        resp_ct_size = ngx_http_cache_purge_content_type_html_size;
+        resp_body = ngx_http_cache_purge_body_templ_html;
+        resp_body_size = ngx_http_cache_purge_body_templ_html_size;
+        break;
     }
 
     body_len = resp_body_size - 2 - 1;
@@ -1828,7 +1826,7 @@ ngx_http_cache_purge_send_response(ngx_http_request_t *r) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    p = ngx_snprintf(buf, resp_tmpl_len, resp_body , buf_keydata);
+    p = ngx_snprintf(buf, resp_tmpl_len, resp_body, buf_keydata);
     if (p == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
@@ -2215,8 +2213,8 @@ ngx_http_cache_purge_is_partial(ngx_http_request_t *r) {
 
     /* Only check the first key */
     return c->keys.nelts > 0
-        && key[0].len > 0
-        && key[0].data[key[0].len - 1] == '*';
+           && key[0].len > 0
+           && key[0].data[key[0].len - 1] == '*';
 }
 
 char *
