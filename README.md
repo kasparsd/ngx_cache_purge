@@ -31,15 +31,18 @@ Open a shell in the container with the repository mounted at `/workspace`:
 
     make shell
 
-Configure and build NGINX with this module. If you run this on the host, the
-Makefile will execute the build inside the container automatically. If you run
-it from a shell inside the container, it will build directly there.
+Configure and build NGINX with this module in your current environment. Use a
+shell inside the development container if you want the containerized toolchain.
 
     make nginx-build
 
-Print the resulting `nginx -V` with the same host/container-agnostic behavior:
+Print the resulting `nginx -V`:
 
     make nginx-version
+
+Format the module source file:
+
+    make format
 
 Run the test suite after building:
 
@@ -322,7 +325,7 @@ Testing
 
 You can test it by running:
 
-`$ prove`
+`$ make test`
 
 
 License
