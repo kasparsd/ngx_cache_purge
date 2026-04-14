@@ -19,7 +19,7 @@ Configuration directives (same location syntax)
 ===============================================
 fastcgi_cache_purge
 -------------------
-* **syntax**: `fastcgi_cache_purge on|off|<method> [purge_all] [from all|<ip> [.. <ip>]]`
+* **syntax**: `fastcgi_cache_purge on|off|<method> [soft] [purge_all] [from all|<ip> [.. <ip>]]`
 * **default**: `none`
 * **context**: `http`, `server`, `location`
 
@@ -28,7 +28,7 @@ Allow purging of selected pages from `FastCGI`'s cache.
 
 proxy_cache_purge
 -----------------
-* **syntax**: `proxy_cache_purge on|off|<method> [purge_all] [from all|<ip> [.. <ip>]]`
+* **syntax**: `proxy_cache_purge on|off|<method> [soft] [purge_all] [from all|<ip> [.. <ip>]]`
 * **default**: `none`
 * **context**: `http`, `server`, `location`
 
@@ -37,7 +37,7 @@ Allow purging of selected pages from `proxy`'s cache.
 
 scgi_cache_purge
 ----------------
-* **syntax**: `scgi_cache_purge on|off|<method> [purge_all] [from all|<ip> [.. <ip>]]`
+* **syntax**: `scgi_cache_purge on|off|<method> [soft] [purge_all] [from all|<ip> [.. <ip>]]`
 * **default**: `none`
 * **context**: `http`, `server`, `location`
 
@@ -46,7 +46,7 @@ Allow purging of selected pages from `SCGI`'s cache.
 
 uwsgi_cache_purge
 -----------------
-* **syntax**: `uwsgi_cache_purge on|off|<method> [purge_all] [from all|<ip> [.. <ip>]]`
+* **syntax**: `uwsgi_cache_purge on|off|<method> [soft] [purge_all] [from all|<ip> [.. <ip>]]`
 * **default**: `none`
 * **context**: `http`, `server`, `location`
 
@@ -57,7 +57,7 @@ Configuration directives (separate location syntax)
 ===================================================
 fastcgi_cache_purge
 -------------------
-* **syntax**: `fastcgi_cache_purge zone_name key`
+* **syntax**: `fastcgi_cache_purge zone_name key [soft]`
 * **default**: `none`
 * **context**: `location`
 
@@ -66,7 +66,7 @@ Sets area and key used for purging selected pages from `FastCGI`'s cache.
 
 proxy_cache_purge
 -----------------
-* **syntax**: `proxy_cache_purge zone_name key`
+* **syntax**: `proxy_cache_purge zone_name key [soft]`
 * **default**: `none`
 * **context**: `location`
 
@@ -75,7 +75,7 @@ Sets area and key used for purging selected pages from `proxy`'s cache.
 
 scgi_cache_purge
 ----------------
-* **syntax**: `scgi_cache_purge zone_name key`
+* **syntax**: `scgi_cache_purge zone_name key [soft]`
 * **default**: `none`
 * **context**: `location`
 
@@ -84,7 +84,7 @@ Sets area and key used for purging selected pages from `SCGI`'s cache.
 
 uwsgi_cache_purge
 -----------------
-* **syntax**: `uwsgi_cache_purge zone_name key`
+* **syntax**: `uwsgi_cache_purge zone_name key [soft]`
 * **default**: `none`
 * **context**: `location`
 
@@ -113,6 +113,22 @@ You can specify a partial key adding an asterisk at the end of the URL.
 The asterisk must be the last character of the key, so you **must** put the $uri variable at the end.
 
 
+Soft Purge
+==========
+Adding the `soft` parameter expires matching cached entries in place instead of
+deleting them outright.
+
+- Exact-key soft purge marks the cached entry as expired, so the next request is
+    handled as `EXPIRED` rather than a deletion-driven `MISS`.
+- Wildcard soft purge applies the same expiration behavior to all matching keys.
+- `purge_all` can also be combined with `soft` to expire every cached entry in a
+    zone without removing the underlying cache files immediately.
+
+For wildcard and `purge_all` soft purges, the module expires both the cache-file
+header on disk and the matching shared-memory cache node so the next lookup is
+treated as expired consistently.
+
+
 
 Sample configuration (same location syntax)
 ===========================================
@@ -125,6 +141,22 @@ Sample configuration (same location syntax)
                 proxy_cache        tmpcache;
                 proxy_cache_key    "$uri$is_args$args";
                 proxy_cache_purge  PURGE from 127.0.0.1;
+            }
+        }
+    }
+
+
+Sample configuration (same location syntax - soft purge)
+========================================================
+    http {
+        proxy_cache_path  /tmp/cache  keys_zone=tmpcache:10m;
+
+        server {
+            location / {
+                proxy_pass         http://127.0.0.1:8000;
+                proxy_cache        tmpcache;
+                proxy_cache_key    "$uri$is_args$args";
+                proxy_cache_purge  PURGE soft from 127.0.0.1;
             }
         }
     }
@@ -163,6 +195,27 @@ Sample configuration (separate location syntax)
                 deny               all;
                 proxy_cache        tmpcache;
                 proxy_cache_key    "$1$is_args$args";
+            }
+        }
+    }
+
+
+Sample configuration (separate location syntax - soft purge)
+============================================================
+    http {
+        proxy_cache_path  /tmp/cache  keys_zone=tmpcache:10m;
+
+        server {
+            location / {
+                proxy_pass         http://127.0.0.1:8000;
+                proxy_cache        tmpcache;
+                proxy_cache_key    "$uri$is_args$args";
+            }
+
+            location ~ /purge(/.*) {
+                allow              127.0.0.1;
+                deny               all;
+                proxy_cache_purge  tmpcache "$1$is_args$args" soft;
             }
         }
     }
