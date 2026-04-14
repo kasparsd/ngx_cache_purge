@@ -36,6 +36,4 @@ jobs:
         run: make image
 
       - name: Run tests
-        run: |
-          make shell
-          make test
+        run: docker compose run --rm dev make test
