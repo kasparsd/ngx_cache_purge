@@ -151,6 +151,8 @@ cache_tag_headers
 Sets the request and cached-response headers used for cache-tag extraction and
 tag purge matching.
 
+All watched locations that share the same cache zone must use the same `cache_tag_headers` list.
+
 
 cache_tag_watch
 -----------------
@@ -218,6 +220,8 @@ or:
 
 All supplied tags are matched with OR semantics. If any cached file is indexed
 under any supplied tag, it will be purged.
+
+If a watched purge location receives a plain `PURGE` request without any of the configured tag headers, the module falls back to the normal key-based purge behavior for that location.
 
 If the purge location uses `soft`, tag purges also behave as soft purges: the
 matching cache entries are marked expired in place instead of being deleted.
@@ -404,6 +408,8 @@ Sample configuration (cache tags)
 The origin responses cached through `/tagged/` should emit `Surrogate-Key`,
 `Cache-Tag`, or both. The module reads those headers from the cached response
 file and indexes the tags automatically.
+
+If you customize `cache_tag_headers`, the same configured header names are used for both cached-response indexing and incoming purge requests.
 
 Example tag purge:
 

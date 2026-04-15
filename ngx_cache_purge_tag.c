@@ -1,5 +1,8 @@
 #include "ngx_cache_purge_tag.h"
 
+static ngx_flag_t ngx_http_cache_tag_headers_equal(ngx_array_t *left,
+    ngx_array_t *right);
+
 char *
 ngx_http_cache_tag_index_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_http_cache_purge_main_conf_t  *pmcf;
@@ -146,7 +149,8 @@ ngx_http_cache_tag_request_headers(ngx_http_request_t *r, ngx_array_t **tags) {
 }
 
 ngx_int_t
-ngx_http_cache_tag_register_cache(ngx_conf_t *cf, ngx_http_file_cache_t *cache) {
+ngx_http_cache_tag_register_cache(ngx_conf_t *cf, ngx_http_file_cache_t *cache,
+                                  ngx_array_t *headers) {
     ngx_http_cache_purge_main_conf_t  *pmcf;
     ngx_http_cache_tag_zone_t         *zones, *zone;
     ngx_uint_t                         i;
@@ -163,6 +167,13 @@ ngx_http_cache_tag_register_cache(ngx_conf_t *cf, ngx_http_file_cache_t *cache) 
     zones = pmcf->zones->elts;
     for (i = 0; i < pmcf->zones->nelts; i++) {
         if (zones[i].cache == cache) {
+            if (!ngx_http_cache_tag_headers_equal(zones[i].headers, headers)) {
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                                   "cache_tag_headers must match for all watched locations using cache zone \"%V\"",
+                                   &zones[i].zone_name);
+                return NGX_ERROR;
+            }
+
             return NGX_OK;
         }
     }
@@ -174,8 +185,43 @@ ngx_http_cache_tag_register_cache(ngx_conf_t *cf, ngx_http_file_cache_t *cache) 
 
     zone->cache = cache;
     zone->zone_name = cache->shm_zone->shm.name;
+    zone->headers = headers;
 
     return NGX_OK;
+}
+
+static ngx_flag_t
+ngx_http_cache_tag_headers_equal(ngx_array_t *left, ngx_array_t *right) {
+    ngx_str_t   *left_header, *right_header;
+    ngx_uint_t   i, j;
+
+    if (left == right) {
+        return 1;
+    }
+
+    if (left == NULL || right == NULL || left->nelts != right->nelts) {
+        return 0;
+    }
+
+    left_header = left->elts;
+    right_header = right->elts;
+
+    for (i = 0; i < left->nelts; i++) {
+        for (j = 0; j < right->nelts; j++) {
+            if (left_header[i].len == right_header[j].len
+                    && ngx_strncasecmp(left_header[i].data,
+                                       right_header[j].data,
+                                       left_header[i].len) == 0) {
+                break;
+            }
+        }
+
+        if (j == right->nelts) {
+            return 0;
+        }
+    }
+
+    return 1;
 }
 
 ngx_int_t
@@ -217,6 +263,7 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
         }
         zone->cache = cache;
         zone->zone_name = cache->shm_zone->shm.name;
+        zone->headers = cplcf->cache_tag_headers;
     }
 
 #if !(NGX_LINUX)

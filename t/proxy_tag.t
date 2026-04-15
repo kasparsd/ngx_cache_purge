@@ -25,6 +25,18 @@ our $http_config_restart = <<'_EOC_';
     cache_tag_index   sqlite /tmp/ngx_cache_purge_tags_restart.sqlite;
 _EOC_
 
+our $http_config_plain = <<'_EOC_';
+    proxy_cache_path  /tmp/ngx_cache_purge_cache keys_zone=test_cache:10m;
+    proxy_temp_path   /tmp/ngx_cache_purge_temp 1 2;
+    cache_tag_index   sqlite /tmp/ngx_cache_purge_tags_plain.sqlite;
+_EOC_
+
+our $http_config_custom = <<'_EOC_';
+    proxy_cache_path  /tmp/ngx_cache_purge_cache keys_zone=test_cache:10m;
+    proxy_temp_path   /tmp/ngx_cache_purge_temp 1 2;
+    cache_tag_index   sqlite /tmp/ngx_cache_purge_tags_custom.sqlite;
+_EOC_
+
 our $config_soft = <<'_EOC_';
     location = /proxy/a {
         proxy_pass         $scheme://127.0.0.1:$server_port/origin/a;
@@ -108,6 +120,43 @@ our $config_forbidden = <<'_EOC_';
         add_header         Surrogate-Key "group-denied";
         add_header         Cache-Tag "denied";
         return 200         "origin-a";
+    }
+_EOC_
+
+our $config_plain = <<'_EOC_';
+    location = /proxy/plain {
+        proxy_pass         $scheme://127.0.0.1:$server_port/origin/plain;
+        proxy_cache        test_cache;
+        proxy_cache_key    $uri$is_args$args;
+        proxy_cache_valid  3m;
+        add_header         X-Cache-Status $upstream_cache_status;
+        proxy_cache_purge  PURGE soft from 127.0.0.1;
+        cache_tag_watch    on;
+    }
+
+    location = /origin/plain {
+        add_header         Surrogate-Key "group-plain";
+        add_header         Cache-Tag "plain-tag";
+        return 200         "origin-plain";
+    }
+_EOC_
+
+our $config_custom = <<'_EOC_';
+    location = /proxy/custom {
+        proxy_pass         $scheme://127.0.0.1:$server_port/origin/custom;
+        proxy_cache        test_cache;
+        proxy_cache_key    $uri$is_args$args;
+        proxy_cache_valid  3m;
+        add_header         X-Cache-Status $upstream_cache_status;
+        proxy_cache_purge  PURGE from 127.0.0.1;
+        cache_tag_watch    on;
+        cache_tag_headers  Edge-Tag Custom-Group;
+    }
+
+    location = /origin/custom {
+        add_header         Edge-Tag "group-custom";
+        add_header         Custom-Group "custom-alpha, custom-shared";
+        return 200         "origin-custom";
     }
 _EOC_
 
@@ -428,5 +477,112 @@ Surrogate-Key: group-one
 qr/cache_tag request reusing persisted index for zone "test_cache"/
 --- grep_error_log_out
 cache_tag request reusing persisted index for zone "test_cache"
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 21: prepare watched entry for plain purge fallback
+--- http_config eval: $::http_config_plain
+--- config eval: $::config_plain
+--- request
+GET /proxy/plain
+--- error_code: 200
+--- response_headers
+X-Cache-Status: MISS
+--- response_body: origin-plain
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 22: plain PURGE still works when cache_tag_watch is enabled
+--- http_config eval: $::http_config_plain
+--- config eval: $::config_plain
+--- request
+PURGE /proxy/plain
+--- error_code: 200
+--- response_headers
+Content-Type: text/html
+--- response_body_like: Successful purge
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 23: plain PURGE fallback performs the configured soft purge
+--- http_config eval: $::http_config_plain
+--- config eval: $::config_plain
+--- request
+GET /proxy/plain
+--- error_code: 200
+--- response_headers
+X-Cache-Status: EXPIRED
+--- response_body: origin-plain
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 24: prepare custom-header tagged cache entry
+--- http_config eval: $::http_config_custom
+--- config eval: $::config_custom
+--- request
+GET /proxy/custom
+--- error_code: 200
+--- response_headers
+X-Cache-Status: MISS
+--- response_body: origin-custom
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 25: serve custom-header tagged entry from cache
+--- http_config eval: $::http_config_custom
+--- config eval: $::config_custom
+--- request
+GET /proxy/custom
+--- error_code: 200
+--- response_headers
+X-Cache-Status: HIT
+--- response_body: origin-custom
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 26: custom cache_tag_headers are matched during purge
+--- http_config eval: $::http_config_custom
+--- config eval: $::config_custom
+--- request
+PURGE /proxy/custom
+--- more_headers
+Custom-Group: custom-alpha
+--- error_code: 200
+--- response_headers
+Content-Type: text/html
+--- response_body_like: Successful purge
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 27: custom cache_tag_headers are used for cached-response indexing
+--- http_config eval: $::http_config_custom
+--- config eval: $::config_custom
+--- request
+GET /proxy/custom
+--- error_code: 200
+--- response_headers
+X-Cache-Status: MISS
+--- response_body: origin-custom
+--- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/

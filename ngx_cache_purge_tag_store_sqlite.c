@@ -13,6 +13,8 @@ static ngx_int_t ngx_http_cache_tag_store_prepare_one(
     sqlite3 *db, sqlite3_stmt **stmt, const char *sql, ngx_log_t *log);
 static ngx_int_t ngx_http_cache_tag_store_exec(
     ngx_http_cache_tag_store_t *store, const char *sql, ngx_log_t *log);
+static int ngx_http_cache_tag_store_step(sqlite3_stmt *stmt, sqlite3 *db,
+        ngx_log_t *log, const char *action);
 static void ngx_http_cache_tag_store_finalize(
     ngx_http_cache_tag_store_t *store);
 static ngx_int_t ngx_http_cache_tag_push_unique(ngx_pool_t *pool,
@@ -188,7 +190,8 @@ ngx_http_cache_tag_store_replace_file_tags(ngx_http_cache_tag_store_t *store,
         sqlite3_bind_int64(store->stmt.insert_entry, 4, (sqlite3_int64) mtime);
         sqlite3_bind_int64(store->stmt.insert_entry, 5, (sqlite3_int64) size);
 
-        rc = sqlite3_step(store->stmt.insert_entry);
+        rc = ngx_http_cache_tag_store_step(store->stmt.insert_entry, store->db,
+                                           log, "insert");
         if (rc != SQLITE_DONE) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
                           "sqlite insert failed: %s",
@@ -215,7 +218,8 @@ ngx_http_cache_tag_store_delete_file(ngx_http_cache_tag_store_t *store,
                       (const char *) path->data, path->len,
                       SQLITE_TRANSIENT);
 
-    rc = sqlite3_step(store->stmt.delete_file);
+    rc = ngx_http_cache_tag_store_step(store->stmt.delete_file, store->db, log,
+                                       "delete");
     if (rc != SQLITE_DONE) {
         ngx_log_error(NGX_LOG_ERR, log, 0, "sqlite delete failed: %s",
                       sqlite3_errmsg(store->db));
@@ -252,7 +256,8 @@ ngx_http_cache_tag_store_collect_paths_by_tags(ngx_http_cache_tag_store_t *store
                           (const char *) tag[i].data, tag[i].len,
                           SQLITE_TRANSIENT);
 
-        while ((rc = sqlite3_step(store->stmt.collect_paths)) == SQLITE_ROW) {
+        while ((rc = ngx_http_cache_tag_store_step(store->stmt.collect_paths,
+                     store->db, log, "lookup")) == SQLITE_ROW) {
             text = sqlite3_column_text(store->stmt.collect_paths, 0);
             if (text == NULL) {
                 continue;
@@ -314,7 +319,8 @@ ngx_http_cache_tag_store_get_zone_state(ngx_http_cache_tag_store_t *store,
                       (const char *) zone_name->data, zone_name->len,
                       SQLITE_TRANSIENT);
 
-    rc = sqlite3_step(store->stmt.get_zone_state);
+    rc = ngx_http_cache_tag_store_step(store->stmt.get_zone_state, store->db,
+                                       log, "zone-state read");
     if (rc == SQLITE_ROW) {
         state->bootstrap_complete = sqlite3_column_int(store->stmt.get_zone_state,
                                     0) ? 1 : 0;
@@ -349,7 +355,8 @@ ngx_http_cache_tag_store_set_zone_state(ngx_http_cache_tag_store_t *store,
     sqlite3_bind_int64(store->stmt.set_zone_state, 3,
                        (sqlite3_int64) state->last_bootstrap_at);
 
-    rc = sqlite3_step(store->stmt.set_zone_state);
+    rc = ngx_http_cache_tag_store_step(store->stmt.set_zone_state, store->db,
+                                       log, "zone-state write");
     if (rc != SQLITE_DONE) {
         ngx_log_error(NGX_LOG_ERR, log, 0, "sqlite zone-state write failed: %s",
                       sqlite3_errmsg(store->db));
@@ -362,10 +369,10 @@ ngx_http_cache_tag_store_set_zone_state(ngx_http_cache_tag_store_t *store,
 ngx_int_t
 ngx_http_cache_tag_store_process_file(ngx_http_cache_tag_store_t *store,
                                       ngx_str_t *zone_name, ngx_str_t *path,
+                                      ngx_array_t *headers,
                                       ngx_log_t *log) {
     ngx_pool_t   *pool;
-    ngx_array_t  *headers, *tags;
-    ngx_str_t    *header;
+    ngx_array_t  *tags;
     time_t        mtime;
     off_t         size;
     ngx_int_t     rc;
@@ -375,25 +382,10 @@ ngx_http_cache_tag_store_process_file(ngx_http_cache_tag_store_t *store,
         return NGX_ERROR;
     }
 
-    headers = ngx_array_create(pool, 2, sizeof(ngx_str_t));
-    if (headers == NULL) {
+    if (headers == NULL || headers->nelts == 0) {
         ngx_destroy_pool(pool);
-        return NGX_ERROR;
+        return ngx_http_cache_tag_store_delete_file(store, zone_name, path, log);
     }
-
-    header = ngx_array_push(headers);
-    if (header == NULL) {
-        ngx_destroy_pool(pool);
-        return NGX_ERROR;
-    }
-    ngx_str_set(header, "Surrogate-Key");
-
-    header = ngx_array_push(headers);
-    if (header == NULL) {
-        ngx_destroy_pool(pool);
-        return NGX_ERROR;
-    }
-    ngx_str_set(header, "Cache-Tag");
 
     if (ngx_http_cache_tag_parse_file(pool, path, headers, &tags, &mtime, &size,
                                       log) != NGX_OK) {
@@ -491,7 +483,34 @@ ngx_http_cache_tag_store_open(ngx_str_t *path, int flags, ngx_flag_t readonly,
     store->readonly = readonly;
     store->schema_ready = 0;
 
+    sqlite3_busy_timeout(db, 5000);
+
     return store;
+}
+
+static int
+ngx_http_cache_tag_store_step(sqlite3_stmt *stmt, sqlite3 *db, ngx_log_t *log,
+                              const char *action) {
+    ngx_uint_t  attempt;
+    int         rc;
+
+    for (attempt = 0; attempt < 5; attempt++) {
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_BUSY && rc != SQLITE_LOCKED) {
+            return rc;
+        }
+
+        if (attempt < 4) {
+            ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0,
+                           "sqlite %s busy, retry %ui", action, attempt + 1);
+            sqlite3_sleep((int) ((attempt + 1) * 10));
+        }
+    }
+
+    ngx_log_error(NGX_LOG_WARN, log, 0, "sqlite %s remained busy: %s",
+                  action, sqlite3_errmsg(db));
+
+    return rc;
 }
 
 static ngx_int_t

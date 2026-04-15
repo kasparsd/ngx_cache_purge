@@ -363,7 +363,7 @@ ngx_http_cache_tag_add_watch_recursive(ngx_http_cache_tag_store_t *store,
 
         if (index_mode == NGX_HTTP_CACHE_TAG_INDEX_DIRECT) {
             if (ngx_http_cache_tag_store_process_file(store, &zone->zone_name,
-                    &child, cycle->log) == NGX_ERROR) {
+                    &child, zone->headers, cycle->log) == NGX_ERROR) {
                 closedir(dir);
                 return NGX_ERROR;
             }
@@ -434,8 +434,16 @@ ngx_http_cache_tag_process_events(ngx_cycle_t *cycle) {
                                    event->name, &path) == NGX_OK) {
                     if (event->mask & IN_ISDIR) {
                         if (event->mask & (IN_CREATE|IN_MOVED_TO)) {
+                            ngx_http_cache_tag_zone_t *watch_zone;
+
                             zone.zone_name = watch->zone_name;
                             zone.cache = watch->cache;
+                            zone.headers = NULL;
+                            watch_zone = ngx_http_cache_tag_lookup_zone(watch->cache);
+                            if (watch_zone != NULL) {
+                                zone.headers = watch_zone->headers;
+                            }
+
                             if (ngx_http_cache_tag_add_watch_recursive(
                                         ngx_http_cache_tag_store_writer(), &zone, &path,
                                         cycle, NGX_HTTP_CACHE_TAG_INDEX_PENDING,
@@ -710,6 +718,7 @@ static ngx_int_t
 ngx_http_cache_tag_apply_pending_ops(ngx_http_cache_tag_store_t *store,
                                      ngx_array_t *pending_ops, ngx_log_t *log) {
     ngx_http_cache_tag_pending_op_t  *op;
+    ngx_http_cache_tag_zone_t        *zone;
     ngx_uint_t                        i;
 
     if (pending_ops->nelts == 0) {
@@ -731,8 +740,17 @@ ngx_http_cache_tag_apply_pending_ops(ngx_http_cache_tag_store_t *store,
             continue;
         }
 
+        zone = ngx_http_cache_tag_lookup_zone(op[i].cache);
+        if (zone == NULL || zone->headers == NULL) {
+            ngx_http_cache_tag_store_rollback_batch(store, log);
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "cache_tag missing header configuration for zone \"%V\"",
+                          &op[i].zone_name);
+            return NGX_ERROR;
+        }
+
         if (ngx_http_cache_tag_store_process_file(store, &op[i].zone_name,
-                &op[i].path, log) != NGX_OK) {
+                &op[i].path, zone->headers, log) != NGX_OK) {
             ngx_http_cache_tag_store_rollback_batch(store, log);
             return NGX_ERROR;
         }

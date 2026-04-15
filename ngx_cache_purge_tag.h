@@ -57,6 +57,7 @@ typedef struct {
 struct ngx_http_cache_tag_zone_s {
     ngx_str_t                     zone_name;
     ngx_http_file_cache_t        *cache;
+    ngx_array_t                  *headers;
 };
 
 #if (NGX_LINUX)
@@ -141,7 +142,8 @@ ngx_int_t ngx_http_cache_tag_request_headers(ngx_http_request_t *r,
 ngx_int_t ngx_http_cache_tag_extract_tokens(ngx_pool_t *pool, u_char *value,
                                             size_t len, ngx_array_t *tags);
 ngx_int_t ngx_http_cache_tag_register_cache(ngx_conf_t *cf,
-                                            ngx_http_file_cache_t *cache);
+                                            ngx_http_file_cache_t *cache,
+                                            ngx_array_t *headers);
 ngx_int_t ngx_http_cache_tag_purge(ngx_http_request_t *r,
                                    ngx_http_file_cache_t *cache);
 ngx_int_t ngx_http_cache_tag_process_init(ngx_cycle_t *cycle,
@@ -182,7 +184,7 @@ ngx_int_t ngx_http_cache_tag_store_set_zone_state(
     ngx_http_cache_tag_zone_state_t *state, ngx_log_t *log);
 ngx_int_t ngx_http_cache_tag_store_process_file(
     ngx_http_cache_tag_store_t *store, ngx_str_t *zone_name, ngx_str_t *path,
-    ngx_log_t *log);
+    ngx_array_t *headers, ngx_log_t *log);
 ngx_int_t ngx_http_cache_tag_store_runtime_init(
     ngx_cycle_t *cycle, ngx_http_cache_purge_main_conf_t *pmcf,
     ngx_flag_t owner);
