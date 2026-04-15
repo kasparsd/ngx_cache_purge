@@ -4,10 +4,6 @@
 
 _This module is not distributed with the NGINX source. See [Installation Instructions](#installation-instructions)._
 
-## Sponsors
-
-Work on the original patch was fully funded by [yo.se](http://yo.se).
-
 ## Status
 
 This module is production-ready.
@@ -17,8 +13,7 @@ This module is production-ready.
 `ngx_cache_purge` supports multiple purge styles depending on how you want to address cached content:
 
 - exact URI purge
-- wildcard URI purge using a trailing `*`
-- cache-tag purge
+- wildcard URI purge using a trailing `*`- cache-tag purge
 - surrogate-key purge
 
 For most users, the simplest starting point is a cached location plus a `PURGE` method restricted to trusted clients.
