@@ -81,7 +81,7 @@ curl -i -X PURGE -H 'Surrogate-Key: article-42 group-a' 'http://127.0.0.1:8080/t
 
 ## Installation Instructions
 
-You need to build NGINX with this repository as an extra module via `--add-module`; it is not bundled with upstream NGINX.
+You need to build NGINX with this repository as an extra module via `--add-module` or `--add-dynamic-module`; it is not bundled with upstream NGINX.
 
 ### Recommended: use the included development container
 
@@ -100,7 +100,7 @@ make nginx-version
 
 - Download and extract the NGINX source version you want to build against.
 - Install the usual NGINX build dependencies plus SQLite development headers.
-- Run `./configure` from the NGINX source tree and point `--add-module` at this repository.
+- Run `./configure` from the NGINX source tree and point `--add-module` or `--add-dynamic-module` at this repository.
 
 ```bash
 ./configure \
@@ -111,7 +111,9 @@ make
 make install
 ```
 
-The repository `config` script links against `sqlite3`, so your build environment must provide the SQLite development library.
+For a dynamic module build, replace `--add-module` with `--add-dynamic-module` and use `make modules`.
+
+The repository `config` script links against `sqlite3`, so your build environment must provide the SQLite development library. The resulting dynamic module also depends on the system `libsqlite3` at runtime.
 
 If you want formatting, tests, or the manual validation setup, see [Development](#development).
 
