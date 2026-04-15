@@ -113,6 +113,26 @@ make install
 
 For a dynamic module build, replace `--add-module` with `--add-dynamic-module` and use `make modules`.
 
+### Rebuild a dynamic module for a specific installed nginx version
+
+If you already know the target nginx version, rebuild the module against that exact source release. For example, if `nginx -v` reports `nginx/1.28.1`:
+
+```bash
+cd ~/build/nginx-cache-purge
+wget https://nginx.org/download/nginx-1.28.1.tar.gz
+tar xf nginx-1.28.1.tar.gz
+cd nginx-1.28.1
+
+./configure \
+    --with-compat \
+    --with-ld-opt="-lsqlite3" \
+    --add-dynamic-module=../ngx_cache_purge
+
+make modules
+```
+
+This produces `objs/ngx_http_cache_purge_module.so`, which you can then copy into your nginx modules directory and load with `load_module`.
+
 The repository `config` script links against `sqlite3`, so your build environment must provide the SQLite development library. The resulting dynamic module also depends on the system `libsqlite3` at runtime.
 
 If you want formatting, tests, or the manual validation setup, see [Development](#development).
