@@ -125,7 +125,7 @@ ngx_int_t   ngx_http_cache_purge_access(ngx_array_t *a, ngx_array_t *a6,
 
 ngx_int_t   ngx_http_cache_purge_send_response(ngx_http_request_t *r);
 ngx_int_t   ngx_http_cache_purge_request_mode(ngx_http_request_t *r,
-                                              ngx_flag_t default_soft);
+        ngx_flag_t default_soft);
 # if (nginx_version >= 1007009)
 ngx_int_t   ngx_http_cache_purge_cache_get(ngx_http_request_t *r,
         ngx_http_upstream_t *u, ngx_http_file_cache_t **cache);
