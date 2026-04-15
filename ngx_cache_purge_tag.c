@@ -1,7 +1,7 @@
 #include "ngx_cache_purge_tag.h"
 
 static ngx_flag_t ngx_http_cache_tag_headers_equal(ngx_array_t *left,
-    ngx_array_t *right);
+        ngx_array_t *right);
 
 char *
 ngx_http_cache_tag_index_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {

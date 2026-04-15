@@ -503,7 +503,7 @@ ngx_http_cache_tag_store_step(sqlite3_stmt *stmt, sqlite3 *db, ngx_log_t *log,
         if (attempt < 4) {
             ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0,
                            "sqlite %s busy, retry %ui", action, attempt + 1);
-            sqlite3_sleep((int) ((attempt + 1) * 10));
+            sqlite3_sleep((int)((attempt + 1) * 10));
         }
     }
 
