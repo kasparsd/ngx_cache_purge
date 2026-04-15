@@ -13,6 +13,18 @@ our $http_config = <<'_EOC_';
     cache_tag_index   sqlite /tmp/ngx_cache_purge_tags.sqlite;
 _EOC_
 
+our $http_config_hard = <<'_EOC_';
+    proxy_cache_path  /tmp/ngx_cache_purge_cache keys_zone=test_cache:10m;
+    proxy_temp_path   /tmp/ngx_cache_purge_temp 1 2;
+    cache_tag_index   sqlite /tmp/ngx_cache_purge_tags_hard.sqlite;
+_EOC_
+
+our $http_config_restart = <<'_EOC_';
+    proxy_cache_path  /tmp/ngx_cache_purge_cache keys_zone=test_cache:10m;
+    proxy_temp_path   /tmp/ngx_cache_purge_temp 1 2;
+    cache_tag_index   sqlite /tmp/ngx_cache_purge_tags_restart.sqlite;
+_EOC_
+
 our $config_soft = <<'_EOC_';
     location = /proxy/a {
         proxy_pass         $scheme://127.0.0.1:$server_port/origin/a;
@@ -262,7 +274,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 11: prepare hard-tagged cache entry
---- http_config eval: $::http_config
+--- http_config eval: $::http_config_hard
 --- config eval: $::config_hard
 --- request
 GET /proxy/a?t=hard
@@ -277,7 +289,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 12: serve hard-tagged cache entry from cache
---- http_config eval: $::http_config
+--- http_config eval: $::http_config_hard
 --- config eval: $::config_hard
 --- request
 GET /proxy/a?t=hard
@@ -292,7 +304,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 13: hard purge by cache-tag removes the entry
---- http_config eval: $::http_config
+--- http_config eval: $::http_config_hard
 --- config eval: $::config_hard
 --- request
 PURGE /proxy/a?t=hard
@@ -309,7 +321,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 14: next request after hard tag purge is a miss
---- http_config eval: $::http_config
+--- http_config eval: $::http_config_hard
 --- config eval: $::config_hard
 --- request
 GET /proxy/a?t=hard
@@ -365,5 +377,56 @@ GET /proxy/a?t=forbidden
 X-Cache-Status: HIT
 --- response_body: origin-a
 --- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 18: prepare restart-tagged entry for persisted bootstrap test
+--- http_config eval: $::http_config_restart
+--- config eval: $::config_soft
+--- request
+GET /proxy/a?t=restart
+--- error_code: 200
+--- response_headers
+X-Cache-Status: MISS
+--- response_body: origin-a
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 19: first tag purge bootstraps the zone index
+--- http_config eval: $::http_config_restart
+--- config eval: $::config_soft
+--- request
+PURGE /proxy/a?t=restart
+--- more_headers
+Surrogate-Key: group-one
+--- error_code: 200
+--- response_body_like: Successful purge
+--- grep_error_log eval
+qr/cache_tag bootstrap zone "test_cache"/
+--- grep_error_log_out
+cache_tag bootstrap zone "test_cache"
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 20: second tag purge reuses persisted index after restart
+--- http_config eval: $::http_config_restart
+--- config eval: $::config_soft
+--- request
+PURGE /proxy/a?t=restart
+--- more_headers
+Surrogate-Key: group-one
+--- error_code: 200
+--- response_body_like: Successful purge
+--- grep_error_log eval
+qr/cache_tag request reusing persisted index for zone "test_cache"/
+--- grep_error_log_out
+cache_tag request reusing persisted index for zone "test_cache"
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/

@@ -184,12 +184,13 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
     ngx_http_cache_purge_main_conf_t *pmcf;
     ngx_http_cache_purge_loc_conf_t  *cplcf;
     ngx_http_cache_tag_zone_t        *zone;
+    ngx_http_cache_tag_zone_state_t   state;
     ngx_array_t                      *tags, *paths;
     ngx_str_t                        *path;
     ngx_uint_t                        i;
     ngx_int_t                         rc, purged;
 #if (NGX_LINUX)
-    sqlite3                          *db;
+    ngx_http_cache_tag_store_t       *reader, *writer;
 #endif
 
     rc = ngx_http_cache_tag_request_headers(r, &tags);
@@ -221,35 +222,59 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
 #if !(NGX_LINUX)
     return NGX_DECLINED;
 #else
-    db = ngx_http_cache_tag_db_open(&pmcf->sqlite_path,
-                                    SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-                                    r->connection->log);
-    if (db == NULL) {
+    reader = ngx_http_cache_tag_store_reader(pmcf, r->connection->log);
+    if (reader == NULL) {
         return NGX_ERROR;
     }
 
-    if (ngx_http_cache_tag_sqlite_init(db, r->connection->log) != NGX_OK) {
-        sqlite3_close(db);
+    if (ngx_http_cache_tag_flush_pending((ngx_cycle_t *) ngx_cycle) != NGX_OK) {
         return NGX_ERROR;
     }
 
-    if (ngx_http_cache_tag_db_collect_paths(db, r->pool, &zone->zone_name,
-                                            tags, &paths, r->connection->log)
+    if (ngx_http_cache_tag_store_get_zone_state(reader, &zone->zone_name, &state,
+            r->connection->log) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    if (state.bootstrap_complete) {
+        ngx_log_error(NGX_LOG_NOTICE, r->connection->log, 0,
+                      "cache_tag request reusing persisted index for zone \"%V\"",
+                      &zone->zone_name);
+    }
+
+    if (ngx_http_cache_tag_store_collect_paths_by_tags(reader, r->pool,
+            &zone->zone_name, tags, &paths, r->connection->log)
             != NGX_OK) {
-        sqlite3_close(db);
         return NGX_ERROR;
     }
 
-    if (paths->nelts == 0 && cache->path != NULL) {
-        ngx_http_cache_tag_bootstrap_zone(db, zone, (ngx_cycle_t *) ngx_cycle);
-        if (ngx_http_cache_tag_db_collect_paths(db, r->pool, &zone->zone_name,
-                                                tags, &paths, r->connection->log)
+    if (paths->nelts == 0 && !state.bootstrap_complete && cache->path != NULL) {
+        writer = ngx_http_cache_tag_store_open_writer(&pmcf->sqlite_path,
+                 r->connection->log);
+        if (writer == NULL) {
+            return NGX_ERROR;
+        }
+
+        rc = ngx_http_cache_tag_bootstrap_zone(writer, zone,
+                                               (ngx_cycle_t *) ngx_cycle);
+        ngx_http_cache_tag_store_close(writer);
+        if (rc != NGX_OK) {
+            return NGX_ERROR;
+        }
+
+        if (ngx_http_cache_tag_store_get_zone_state(reader, &zone->zone_name,
+                &state, r->connection->log) != NGX_OK) {
+            return NGX_ERROR;
+        }
+
+        if (ngx_http_cache_tag_store_collect_paths_by_tags(reader, r->pool,
+                &zone->zone_name, tags, &paths, r->connection->log)
                 != NGX_OK) {
-            sqlite3_close(db);
             return NGX_ERROR;
         }
     }
 
+    writer = NULL;
     purged = 0;
     path = paths->elts;
     for (i = 0; i < paths->nelts; i++) {
@@ -257,18 +282,33 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
                                           r->connection->log);
         if (rc == NGX_OK) {
             purged++;
-            ngx_http_cache_tag_db_delete_file(db, &zone->zone_name, &path[i],
-                                              r->connection->log);
-        } else if (rc == NGX_DECLINED) {
-            ngx_http_cache_tag_db_delete_file(db, &zone->zone_name, &path[i],
-                                              r->connection->log);
-        } else {
-            sqlite3_close(db);
+        } else if (rc != NGX_DECLINED) {
+            ngx_http_cache_tag_store_close(writer);
             return NGX_ERROR;
+        }
+
+        if (rc == NGX_OK && cplcf->conf->soft) {
+            continue;
+        }
+
+        if (rc == NGX_OK || rc == NGX_DECLINED) {
+            if (writer == NULL) {
+                writer = ngx_http_cache_tag_store_open_writer(&pmcf->sqlite_path,
+                         r->connection->log);
+                if (writer == NULL) {
+                    return NGX_ERROR;
+                }
+            }
+
+            if (ngx_http_cache_tag_store_delete_file(writer, &zone->zone_name,
+                    &path[i], r->connection->log) != NGX_OK) {
+                ngx_http_cache_tag_store_close(writer);
+                return NGX_ERROR;
+            }
         }
     }
 
-    sqlite3_close(db);
+    ngx_http_cache_tag_store_close(writer);
 
     return purged > 0 ? NGX_OK : NGX_DECLINED;
 #endif
