@@ -89,7 +89,7 @@ Installation Instructions
 You need to build NGINX with this repository as an extra module via
 `--add-module`; it is not bundled with upstream NGINX.
 
-Recommended path: use the included development container
+Recommended path: use the included development container.
 
 - The repository includes a Debian-based build environment with NGINX source,
   SQLite development headers, and `Test::Nginx`.
@@ -124,21 +124,8 @@ make install
 The repository `config` script links against `sqlite3`, so your build
 environment must provide the SQLite development library.
 
-Development container details
------------------------------
-The repository includes a containerized build environment with:
-
-- Debian-based build tooling for NGINX modules
-- downloaded NGINX source in `/opt/nginx-src/nginx-$NGINX_VERSION`
-- `Test::Nginx` installed from `openresty/test-nginx`
-
-Format the module source file:
-
-    make format
-
-Run the test suite after building:
-
-    make test
+If you want formatting, tests, or the manual validation setup, see the
+Development section near the end of this document.
 
 
 Configuration directives (same location syntax)
@@ -331,209 +318,93 @@ Notes:
     purge arrives before a zone has been indexed.
 
 
+Configuration Examples
+======================
+Use these as compact starting points after the Quick Start section.
 
-Sample configuration (same location syntax)
-===========================================
-    http {
-        proxy_cache_path  /tmp/cache  keys_zone=tmpcache:10m;
+Same-location syntax
+--------------------
 
-        server {
-            location / {
-                proxy_pass         http://127.0.0.1:8000;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$uri$is_args$args";
-                proxy_cache_purge  PURGE from 127.0.0.1;
-            }
+```nginx
+http {
+    proxy_cache_path /tmp/cache keys_zone=tmpcache:10m;
+
+    server {
+        location / {
+            proxy_pass         http://127.0.0.1:8000;
+            proxy_cache        tmpcache;
+            proxy_cache_key    "$uri$is_args$args";
+            proxy_cache_purge  PURGE from 127.0.0.1;
         }
     }
+}
+```
 
+Use `soft` if you want matching entries to expire in place, or add
+`purge_all` if you want a purge request to target every cached entry in the
+zone.
 
-Sample configuration (same location syntax - soft purge)
-========================================================
-    http {
-        proxy_cache_path  /tmp/cache  keys_zone=tmpcache:10m;
+Separate-location syntax
+------------------------
 
-        server {
-            location / {
-                proxy_pass         http://127.0.0.1:8000;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$uri$is_args$args";
-                proxy_cache_purge  PURGE soft from 127.0.0.1;
-            }
+```nginx
+http {
+    proxy_cache_path /tmp/cache keys_zone=tmpcache:10m;
+
+    server {
+        location / {
+            proxy_pass         http://127.0.0.1:8000;
+            proxy_cache        tmpcache;
+            proxy_cache_key    "$uri$is_args$args";
+        }
+
+        location ~ /purge(/.*) {
+            allow              127.0.0.1;
+            deny               all;
+            proxy_cache_purge  tmpcache "$1$is_args$args";
         }
     }
+}
+```
+
+Response types
+--------------
+
+Use `cache_purge_response_type` to switch between `html`, `json`, `xml`, and
+`text` responses in the scope where the purge response is generated.
+
+Cache tags
+----------
+
+The minimal cache-tag setup is shown in Quick Start. Use that pattern whenever
+you want to purge by `Cache-Tag` or `Surrogate-Key` headers.
 
 
-Sample configuration (same location syntax - purge all cached files)
-====================================================================
-    http {
-        proxy_cache_path  /tmp/cache  keys_zone=tmpcache:10m;
-
-        server {
-            location / {
-                proxy_pass         http://127.0.0.1:8000;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$uri$is_args$args";
-                proxy_cache_purge  PURGE purge_all from 127.0.0.1 192.168.0.0/8;
-            }
-        }
-    }
+Troubleshooting
+===============
+- Enabling [`gzip_vary`](https://nginx.org/r/gzip_vary) can lead to different results when clearing. For reliable operation, you can disable [`gzip_vary`](https://nginx.org/r/gzip_vary) inside the location [#20](https://github.com/nginx-modules/ngx_cache_purge/issues/20).
 
 
-Sample configuration (separate location syntax)
-===============================================
-    http {
-        proxy_cache_path  /tmp/cache  keys_zone=tmpcache:10m;
+Development
+===========
+Use this section if you are hacking on the module, running the automated test
+suite, or validating behavior inside the included container.
 
-        server {
-            location / {
-                proxy_pass         http://127.0.0.1:8000;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$uri$is_args$args";
-            }
+The repository includes a containerized build environment with:
 
-            location ~ /purge(/.*) {
-                allow              127.0.0.1;
-                deny               all;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$1$is_args$args";
-            }
-        }
-    }
+- Debian-based build tooling for NGINX modules
+- downloaded NGINX source in `/opt/nginx-src/nginx-$NGINX_VERSION`
+- `Test::Nginx` installed from `openresty/test-nginx`
 
+Common development commands:
 
-Sample configuration (separate location syntax - soft purge)
-============================================================
-    http {
-        proxy_cache_path  /tmp/cache  keys_zone=tmpcache:10m;
-
-        server {
-            location / {
-                proxy_pass         http://127.0.0.1:8000;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$uri$is_args$args";
-            }
-
-            location ~ /purge(/.*) {
-                allow              127.0.0.1;
-                deny               all;
-                proxy_cache_purge  tmpcache "$1$is_args$args" soft;
-            }
-        }
-    }
-
-Sample configuration (Optional)
-===============================================
-    http {
-        proxy_cache_path  /tmp/cache  keys_zone=tmpcache:10m;
-
-        cache_purge_response_type text;
-
-        server {
-
-            cache_purge_response_type json;
-
-            location / { #json
-                proxy_pass         http://127.0.0.1:8000;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$uri$is_args$args";
-            }
-
-            location ~ /purge(/.*) { #xml
-                allow              127.0.0.1;
-                deny               all;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$1$is_args$args";
-                cache_purge_response_type xml;
-            }
-
-            location ~ /purge2(/.*) { # json
-                allow              127.0.0.1;
-                deny               all;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$1$is_args$args";
-            }
-        }
-
-        server {
-
-            location / { #text
-                proxy_pass         http://127.0.0.1:8000;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$uri$is_args$args";
-            }
-
-            location ~ /purge(/.*) { #text
-                allow              127.0.0.1;
-                deny               all;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$1$is_args$args";
-            }
-
-            location ~ /purge2(/.*) { #html
-                allow              127.0.0.1;
-                deny               all;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$1$is_args$args";
-                cache_purge_response_type html;
-            }
-        }
-    }
-
-
-Sample configuration (cache tags)
-=================================
-    http {
-        proxy_cache_path  /tmp/cache  keys_zone=tmpcache:10m;
-        cache_tag_index   sqlite /tmp/ngx_cache_purge_tags.sqlite;
-
-        server {
-            location /tagged/ {
-                proxy_pass         http://127.0.0.1:8000;
-                proxy_cache        tmpcache;
-                proxy_cache_key    "$uri$is_args$args";
-                proxy_cache_valid  3m;
-                add_header         X-Cache-Status $upstream_cache_status;
-
-                proxy_cache_purge  PURGE soft from 127.0.0.1;
-                cache_tag_watch    on;
-            }
-        }
-    }
-
-The origin responses cached through `/tagged/` should emit `Surrogate-Key`,
-`Cache-Tag`, or both. The module reads those headers from the cached response
-file and indexes the tags automatically.
-
-If you customize `cache_tag_headers`, the same configured header names are used for both cached-response indexing and incoming purge requests.
-
-Example tag purge:
-
-    curl -i -X PURGE -H 'Surrogate-Key: group-one' \
-        'http://127.0.0.1/tagged/item'
-
-Any cached object in the same cache zone indexed under `group-one` will be
-expired or deleted depending on whether the purge location is configured with
-`soft`.
-
-
-
-Solve problems
-==============
-* Enabling [`gzip_vary`](https://nginx.org/r/gzip_vary) can lead to different results when clearing, when enabling it, you may have problems clearing the cache. For reliable operation, you can disable [`gzip_vary`](https://nginx.org/r/gzip_vary) inside the location [#20](https://github.com/nginx-modules/ngx_cache_purge/issues/20).
-
-
-Testing
-=======
-`ngx_cache_purge` comes with complete test suite based on [Test::Nginx](http://github.com/agentzh/test-nginx).
-
-You can test it by running:
-
-`$ make test`
-
+```bash
+make format
+make test
+```
 
 Docker Validation Config
-========================
+------------------------
 For manual validation inside the development container, the repository includes
 an example nginx configuration at `examples/docker-validation.conf`.
 
