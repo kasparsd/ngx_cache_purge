@@ -6,7 +6,7 @@ _This module is not distributed with the NGINX source. See [Installation Instruc
 
 ## Status
 
-This module is production-ready.
+This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-modules/ngx_cache_purge) to add support for soft purgaging and cache tags (also known as surrogate keys).
 
 ## Quick Start
 
@@ -21,7 +21,6 @@ For most users, the simplest starting point is a cached location plus a `PURGE` 
 ```nginx
 http {
     proxy_cache_path /tmp/cache keys_zone=tmpcache:10m;
-
     server {
         listen 8080;
 
