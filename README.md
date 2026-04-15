@@ -13,7 +13,8 @@ This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-module
 `ngx_cache_purge` supports multiple purge styles depending on how you want to address cached content:
 
 - exact URI purge
-- wildcard URI purge using a trailing `*`- cache-tag purge
+- wildcard URI purge using a trailing `*`
+- cache-tag purge
 - surrogate-key purge
 
 For most users, the simplest starting point is a cached location plus a `PURGE` method restricted to trusted clients.
@@ -21,6 +22,7 @@ For most users, the simplest starting point is a cached location plus a `PURGE` 
 ```nginx
 http {
     proxy_cache_path /tmp/cache keys_zone=tmpcache:10m;
+
     server {
         listen 8080;
 
@@ -356,14 +358,14 @@ It provides separate locations for these behaviors:
 - wildcard soft purge (`/wild`)
 - `purge_all` soft purge (`/purge_all`)
 - separate-location `zone key soft` syntax (`/separate` and `/purge_separate/...`)
-- cache-tag soft purge (`t/proxy_tag.t` exercises the automated path)
+- cache-tag soft purge by `Surrogate-Key` or `Cache-Tag` (`/tagged/...`)
 
 Start it inside the container after building nginx:
 
 ```bash
 make shell
 make nginx-build
-rm -rf /tmp/ngx_cache_purge_demo_* /tmp/ngx_cache_purge_temp
+rm -rf /tmp/ngx_cache_purge_demo_* /tmp/ngx_cache_purge_temp /tmp/ngx_cache_purge_demo_tags.sqlite
 mkdir -p /tmp/ngx_cache_purge_temp /tmp/logs
 /opt/nginx/sbin/nginx -p /tmp -c /workspace/examples/docker-validation.conf
 ```
@@ -425,6 +427,34 @@ curl -i 'http://127.0.0.1:8080/separate/item?t=sep'
 ```
 
 The final request should return `X-Cache-Status: EXPIRED`.
+
+Cache-tag soft purge flow using `Surrogate-Key`:
+
+```bash
+curl -i 'http://127.0.0.1:8080/tagged/a'
+curl -i 'http://127.0.0.1:8080/tagged/b'
+curl -i 'http://127.0.0.1:8080/tagged/c'
+curl -i -X PURGE -H 'Surrogate-Key: group-one' 'http://127.0.0.1:8080/tagged/a'
+curl -i 'http://127.0.0.1:8080/tagged/a'
+curl -i 'http://127.0.0.1:8080/tagged/b'
+curl -i 'http://127.0.0.1:8080/tagged/c'
+```
+
+The two `group-one` entries should come back as `EXPIRED`, while `/tagged/c` should remain `HIT`.
+
+Cache-tag soft purge flow using `Cache-Tag`:
+
+```bash
+curl -i 'http://127.0.0.1:8080/tagged/a'
+curl -i 'http://127.0.0.1:8080/tagged/b'
+curl -i 'http://127.0.0.1:8080/tagged/c'
+curl -i -X PURGE -H 'Cache-Tag: shared' 'http://127.0.0.1:8080/tagged/a'
+curl -i 'http://127.0.0.1:8080/tagged/a'
+curl -i 'http://127.0.0.1:8080/tagged/b'
+curl -i 'http://127.0.0.1:8080/tagged/c'
+```
+
+The two `shared` entries should come back as `EXPIRED`, while `/tagged/c` should remain `HIT`.
 
 Stop the validation nginx instance with:
 
