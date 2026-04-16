@@ -494,6 +494,8 @@ ngx_http_cache_tag_store_sqlite_step(sqlite3_stmt *stmt, sqlite3 *db,
                                      ngx_log_t *log, const char *action) {
     int  rc;
 
+    (void) db;
+
     rc = sqlite3_step(stmt);
 
     if (ngx_http_cache_tag_store_sqlite_busy(rc)) {

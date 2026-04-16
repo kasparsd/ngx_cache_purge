@@ -2588,6 +2588,8 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     task->handler = ngx_http_cache_purge_partial_thread;
     task->event.data = ctx;
     task->event.handler = ngx_http_cache_purge_partial_completion;
+    task->event.log = r->connection->log;
+    task->event.cancelable = 1;
 
     if (ngx_thread_task_post(tp, task) != NGX_OK) {
         return NGX_ERROR;
