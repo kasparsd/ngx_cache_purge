@@ -461,7 +461,11 @@ ngx_http_cache_tag_store_sqlite_open_one(ngx_str_t *path, int flags,
     store->readonly = readonly;
     store->u.sqlite.db = db;
 
-    sqlite3_busy_timeout(db, 5000);
+    /* Disable SQLite's internal sleep-based busy handler so that SQLITE_BUSY
+     * never calls nanosleep() inside the nginx event loop.  The step function
+     * below retries up to five times without sleeping; in WAL mode contention
+     * is rare and short-lived, making an immediate spin sufficient. */
+    sqlite3_busy_timeout(db, 0);
 
     /* Raise the bind-parameter limit so large IN-clause queries (e.g.
      * purge by many tags) work.  The default is 999; 32766 is the hard
@@ -484,11 +488,12 @@ ngx_http_cache_tag_store_sqlite_step(sqlite3_stmt *stmt, sqlite3 *db,
             return rc;
         }
 
-        if (attempt < 4) {
-            ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0,
-                           "sqlite %s busy, retry %ui", action, attempt + 1);
-            sqlite3_sleep((int)((attempt + 1) * 10));
-        }
+        /* Do not sleep here: sleeping inside a timer callback blocks the
+         * nginx event loop.  sqlite3_busy_timeout is set to 0 so SQLite
+         * itself will not sleep either.  In WAL mode SQLITE_BUSY is rare;
+         * spin up to five times and give up rather than stalling the worker. */
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0,
+                       "sqlite %s busy, retry %ui", action, attempt + 1);
     }
 
     ngx_log_error(NGX_LOG_WARN, log, 0, "sqlite %s remained busy: %s",
