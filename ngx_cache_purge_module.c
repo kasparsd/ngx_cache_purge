@@ -136,10 +136,6 @@ void        ngx_http_cache_purge_handler(ngx_http_request_t *r);
 
 ngx_int_t   ngx_http_file_cache_purge(ngx_http_request_t *r);
 ngx_int_t   ngx_http_file_cache_purge_soft(ngx_http_request_t *r);
-static ngx_int_t ngx_http_purge_cache_exact_key_file(ngx_tree_ctx_t *ctx,
-        ngx_str_t *path);
-ngx_int_t   ngx_http_cache_purge_by_exact_key(ngx_http_request_t *r,
-        ngx_http_file_cache_t *cache, ngx_int_t soft);
 
 
 ngx_int_t   ngx_http_cache_purge_all(ngx_http_request_t *r, ngx_http_file_cache_t *cache);
@@ -2073,132 +2069,21 @@ ngx_http_cache_purge_exit_process(ngx_cycle_t *cycle) {
 }
 
 /*
- * Context passed through ngx_walk_tree when purging all cache files
- * whose stored key string matches the requested key exactly.
+ * Known limitation: gzip_vary and Vary-based cache variants
+ *
+ * When gzip_vary (or brotli_vary / zstd_vary) is enabled, nginx stores a
+ * separate cache file for each Accept-Encoding variant of the same URL.
+ * Each variant has a different on-disk hash derived from the primary key
+ * combined with the Vary header value, so a single key-based purge (which
+ * uses ngx_http_file_cache_open) can only remove the one variant whose
+ * Vary headers match the incoming purge request.
+ *
+ * Workaround: use cache tags.  Every cached file — including each Vary
+ * variant — is independently registered in the tag store at write time, so
+ * a tag-based purge finds and removes all variants regardless of encoding.
+ * Configure cache_tag / cache_tag_store and tag your responses to take
+ * advantage of this.
  */
-typedef struct {
-    ngx_http_file_cache_t  *cache;
-    u_char                 *key_data;   /* raw cache key string             */
-    size_t                  key_len;    /* length of key_data               */
-    u_char                 *buf;        /* scratch buffer (key_len + 1)     */
-    ngx_int_t               soft;       /* 1 = soft purge, 0 = hard delete  */
-    ngx_int_t               deleted;    /* number of files successfully removed */
-} ngx_http_cache_purge_exact_ctx_t;
-
-/*
- * ngx_walk_tree file handler: delete a cache file when its stored key string
- * is an exact byte-for-byte match of the key we are purging.
- *
- * nginx stores the cache key in the cache file at offset
- *   sizeof(ngx_http_file_cache_header_t) + 6
- * where the 6 bytes are the literal "\nKEY: " prefix.  The key string is
- * terminated by a LF character.  Reading key_len+1 bytes and verifying that
- * the extra byte is LF gives us a true exact match rather than a prefix match.
- *
- * This approach is Vary-agnostic: variant cache files (created by gzip_vary,
- * brotli_vary, etc.) store the *same* key string as the primary entry but at
- * a different file-name hash, so they are matched and removed automatically.
- */
-static ngx_int_t
-ngx_http_purge_cache_exact_key_file(ngx_tree_ctx_t *ctx, ngx_str_t *path) {
-    ngx_http_cache_purge_exact_ctx_t  *data;
-    ngx_file_t                         file;
-    ssize_t                            n;
-
-    data = ctx->data;
-
-    ngx_memzero(&file, sizeof(ngx_file_t));
-    file.fd = ngx_open_file(path->data, NGX_FILE_RDONLY, NGX_FILE_OPEN,
-                            NGX_FILE_DEFAULT_ACCESS);
-    if (file.fd == NGX_INVALID_FILE) {
-        return NGX_OK;   /* skip; another worker may be writing it */
-    }
-    file.log = ctx->log;
-
-    /* Read the key string plus its LF terminator in one shot. */
-    n = ngx_read_file(&file, data->buf, data->key_len + 1,
-                      sizeof(ngx_http_file_cache_header_t) + 6);
-    ngx_close_file(file.fd);
-
-    if ((size_t) n != data->key_len + 1) {
-        return NGX_OK;   /* too short — not a match */
-    }
-
-    /* Byte-exact key comparison followed by LF terminator check. */
-    if (ngx_memcmp(data->buf, data->key_data, data->key_len) != 0
-            || data->buf[data->key_len] != LF) {
-        return NGX_OK;
-    }
-
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ctx->log, 0,
-                   "http file cache purge exact key match: \"%s\"",
-                   path->data);
-
-    if (ngx_http_cache_purge_by_path(data->cache, path,
-                                     data->soft, ctx->log) == NGX_OK) {
-        data->deleted++;
-    }
-
-    return NGX_OK;   /* keep walking regardless of delete outcome */
-}
-
-/*
- * Walk the entire cache directory tree and remove every file whose stored
- * cache key string exactly matches the key of the current request.
- *
- * Because the match is on the raw key string (not the MD5 hash used as the
- * file name), this function automatically handles all cache variants created
- * by Vary-aware features such as gzip_vary, brotli_vary, and zstd_vary: those
- * variant files are stored at different hashes but contain the same key string,
- * so they are found and removed without any encoding-specific logic.
- *
- * Returns NGX_OK     if at least one file was deleted,
- *         NGX_DECLINED if the key was not found in the cache,
- *         NGX_ERROR   on allocation or walk failure.
- */
-ngx_int_t
-ngx_http_cache_purge_by_exact_key(ngx_http_request_t *r,
-                                  ngx_http_file_cache_t *cache, ngx_int_t soft) {
-    ngx_http_cache_purge_exact_ctx_t  ctx;
-    ngx_str_t                        *keys;
-    ngx_tree_ctx_t                    tree;
-
-    if (r->cache->keys.nelts == 0) {
-        return NGX_ERROR;
-    }
-
-    keys = r->cache->keys.elts;
-    if (keys[0].len == 0) {
-        return NGX_ERROR;
-    }
-
-    ngx_memzero(&ctx, sizeof(ctx));
-    ctx.cache    = cache;
-    ctx.key_data = keys[0].data;
-    ctx.key_len  = keys[0].len;
-    ctx.soft     = soft;
-
-    /* +1 for the LF terminator we read alongside the key */
-    ctx.buf = ngx_palloc(r->pool, ctx.key_len + 1);
-    if (ctx.buf == NULL) {
-        return NGX_ERROR;
-    }
-
-    tree.init_handler      = NULL;
-    tree.file_handler      = ngx_http_purge_cache_exact_key_file;
-    tree.pre_tree_handler  = ngx_http_purge_file_cache_noop;
-    tree.post_tree_handler = ngx_http_purge_file_cache_noop;
-    tree.spec_handler      = ngx_http_purge_file_cache_noop;
-    tree.data  = &ctx;
-    tree.alloc = 0;
-    tree.log   = ngx_cycle->log;
-
-    if (ngx_walk_tree(&tree, &cache->path->name) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
-    return ctx.deleted > 0 ? NGX_OK : NGX_DECLINED;
-}
 
 void
 ngx_http_cache_purge_handler(ngx_http_request_t *r) {
@@ -2224,17 +2109,15 @@ ngx_http_cache_purge_handler(ngx_http_request_t *r) {
             && tags->nelts > 0) {
         rc = NGX_OK;
     } else if (!cplcf->conf->purge_all && !ngx_http_cache_purge_is_partial(r)) {
-        /*
-         * Walk the cache directory and remove every file whose stored cache
-         * key string exactly matches the requested key.  This handles all
-         * Vary-based variants (gzip_vary, brotli_vary, …) transparently: each
-         * variant file contains the same key string as the primary entry even
-         * though its on-disk hash is different.
-         */
-        rc = ngx_http_cache_purge_by_exact_key(r, r->cache->file_cache, mode);
+        if (mode) {
+            rc = ngx_http_file_cache_purge_soft(r);
+        } else {
+            rc = ngx_http_file_cache_purge(r);
+        }
 
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "http file cache purge by exact key: %i", rc);
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "http file cache purge: %i, \"%s\"",
+                       rc, r->cache->file.name.data);
     }
 
     switch (rc) {
