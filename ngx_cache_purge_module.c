@@ -116,6 +116,12 @@ ngx_http_cache_purge_filename_key(ngx_str_t *path, u_char *key);
 static ngx_int_t
 ngx_http_cache_purge_partial_match(ngx_http_cache_purge_partial_ctx_t *data,
                                    ngx_str_t *path, ngx_log_t *log);
+#if (NGX_CACHE_PURGE_THREADS)
+static ngx_thread_pool_t *ngx_http_cache_purge_thread_pool(
+    ngx_http_request_t *r);
+static void ngx_http_cache_purge_partial_thread(void *data, ngx_log_t *log);
+static void ngx_http_cache_purge_partial_completion(ngx_event_t *ev);
+#endif
 
 ngx_int_t   ngx_http_cache_purge_access_handler(ngx_http_request_t *r);
 ngx_int_t   ngx_http_cache_purge_access(ngx_array_t *a, ngx_array_t *a6,
@@ -559,8 +565,21 @@ ngx_http_fastcgi_cache_purge_handler(ngx_http_request_t *r) {
     cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
     handled = 0;
     rc = ngx_http_cache_purge_dispatch_special(r, cache, cplcf, &handled);
-    if (handled && rc != NGX_OK) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    if (handled) {
+        if (rc == NGX_DONE) {
+#  if (nginx_version >= 8011)
+            r->main->count++;
+#  endif
+            return NGX_DONE;
+        }
+
+        if (rc == NGX_DECLINED) {
+            return NGX_HTTP_PRECONDITION_FAILED;
+        }
+
+        if (rc != NGX_OK) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
     }
 
 #  if (nginx_version >= 8011)
@@ -858,8 +877,21 @@ ngx_http_proxy_cache_purge_handler(ngx_http_request_t *r) {
     cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
     handled = 0;
     rc = ngx_http_cache_purge_dispatch_special(r, cache, cplcf, &handled);
-    if (handled && rc != NGX_OK) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    if (handled) {
+        if (rc == NGX_DONE) {
+#  if (nginx_version >= 8011)
+            r->main->count++;
+#  endif
+            return NGX_DONE;
+        }
+
+        if (rc == NGX_DECLINED) {
+            return NGX_HTTP_PRECONDITION_FAILED;
+        }
+
+        if (rc != NGX_OK) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
     }
 
 #  if (nginx_version >= 8011)
@@ -1087,8 +1119,21 @@ ngx_http_scgi_cache_purge_handler(ngx_http_request_t *r) {
     cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
     handled = 0;
     rc = ngx_http_cache_purge_dispatch_special(r, cache, cplcf, &handled);
-    if (handled && rc != NGX_OK) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    if (handled) {
+        if (rc == NGX_DONE) {
+#  if (nginx_version >= 8011)
+            r->main->count++;
+#  endif
+            return NGX_DONE;
+        }
+
+        if (rc == NGX_DECLINED) {
+            return NGX_HTTP_PRECONDITION_FAILED;
+        }
+
+        if (rc != NGX_OK) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
     }
 
 #  if (nginx_version >= 8011)
@@ -1343,8 +1388,21 @@ ngx_http_uwsgi_cache_purge_handler(ngx_http_request_t *r) {
     cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
     handled = 0;
     rc = ngx_http_cache_purge_dispatch_special(r, cache, cplcf, &handled);
-    if (handled && rc != NGX_OK) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    if (handled) {
+        if (rc == NGX_DONE) {
+#  if (nginx_version >= 8011)
+            r->main->count++;
+#  endif
+            return NGX_DONE;
+        }
+
+        if (rc == NGX_DECLINED) {
+            return NGX_HTTP_PRECONDITION_FAILED;
+        }
+
+        if (rc != NGX_OK) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
     }
 
 #  if (nginx_version >= 8011)
@@ -1404,6 +1462,15 @@ struct ngx_http_cache_purge_partial_ctx_s {
     ngx_uint_t key_len;
 };
 
+#if (NGX_CACHE_PURGE_THREADS)
+typedef struct {
+    ngx_http_request_t                 *request;
+    ngx_http_cache_purge_partial_ctx_t  partial;
+    ngx_flag_t                          soft;
+    ngx_int_t                           rc;
+} ngx_http_cache_purge_partial_task_ctx_t;
+#endif
+
 static ngx_int_t
 ngx_http_purge_file_cache_delete_partial_file(ngx_tree_ctx_t *ctx, ngx_str_t *path) {
     if (!ngx_http_cache_purge_partial_match(ctx->data, path, ctx->log)) {
@@ -1439,6 +1506,106 @@ ngx_http_purge_file_cache_soft_partial_file(ngx_tree_ctx_t *ctx, ngx_str_t *path
 
     return ngx_http_cache_purge_soft_path(data->cache, path, ctx->log);
 }
+
+#if (NGX_CACHE_PURGE_THREADS)
+
+static ngx_thread_pool_t *
+ngx_http_cache_purge_thread_pool(ngx_http_request_t *r) {
+    ngx_str_t                  name;
+    ngx_thread_pool_t         *tp;
+    ngx_http_core_loc_conf_t  *clcf;
+    static ngx_str_t           default_name = ngx_string("default");
+
+    clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
+
+    tp = clcf->thread_pool;
+    if (tp != NULL) {
+        return tp;
+    }
+
+    if (clcf->thread_pool_value != NULL) {
+        if (ngx_http_complex_value(r, clcf->thread_pool_value, &name) != NGX_OK) {
+            return NULL;
+        }
+    } else {
+        name = default_name;
+    }
+
+    tp = ngx_thread_pool_get((ngx_cycle_t *) ngx_cycle, &name);
+    if (tp == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "thread pool \"%V\" not found", &name);
+    }
+
+    return tp;
+}
+
+static void
+ngx_http_cache_purge_partial_thread(void *data, ngx_log_t *log) {
+    ngx_tree_ctx_t                          tree;
+    ngx_http_cache_purge_partial_task_ctx_t *ctx;
+
+    ctx = data;
+
+    ngx_memzero(&tree, sizeof(ngx_tree_ctx_t));
+    tree.init_handler = NULL;
+    tree.file_handler = ctx->soft
+                        ? ngx_http_purge_file_cache_soft_partial_file
+                        : ngx_http_purge_file_cache_delete_partial_file;
+    tree.pre_tree_handler = ngx_http_purge_file_cache_noop;
+    tree.post_tree_handler = ngx_http_purge_file_cache_noop;
+    tree.spec_handler = ngx_http_purge_file_cache_noop;
+    tree.data = &ctx->partial;
+    tree.alloc = 0;
+    tree.log = log;
+
+    ctx->rc = ngx_walk_tree(&tree, &ctx->partial.cache->path->name) == NGX_OK
+              ? NGX_OK : NGX_ERROR;
+}
+
+static void
+ngx_http_cache_purge_partial_completion(ngx_event_t *ev) {
+    ngx_connection_t                        *c;
+    ngx_http_request_t                      *r;
+    ngx_http_cache_purge_partial_task_ctx_t *ctx;
+
+    ctx = ev->data;
+    r = ctx->request;
+    c = r->connection;
+
+    ngx_http_set_log_request(c->log, r);
+
+    if (ev->timedout) {
+        ngx_log_error(NGX_LOG_ALERT, c->log, 0,
+                      "partial purge thread operation took too long");
+        ev->timedout = 0;
+        return;
+    }
+
+    if (ev->timer_set) {
+        ngx_del_timer(ev);
+    }
+
+    r->main->blocked--;
+    r->aio = 0;
+
+    if (r->done || r->main->terminated) {
+        c->write->handler(c->write);
+        return;
+    }
+
+    if (ctx->rc == NGX_OK) {
+        r->write_event_handler = ngx_http_request_empty_handler;
+        ngx_http_finalize_request(r, ngx_http_cache_purge_send_response(r));
+        ngx_http_run_posted_requests(c);
+        return;
+    }
+
+    ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+    ngx_http_run_posted_requests(c);
+}
+
+#endif /* NGX_CACHE_PURGE_THREADS */
 
 static ngx_int_t
 ngx_http_cache_purge_partial_match(ngx_http_cache_purge_partial_ctx_t *data,
@@ -2355,11 +2522,17 @@ ngx_http_cache_purge_all(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
 ngx_int_t
 ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
     ngx_http_cache_purge_loc_conf_t     *cplcf;
-    ngx_http_cache_purge_partial_ctx_t  *ctx;
     ngx_str_t                           *keys;
     ngx_str_t                            key;
     ngx_int_t                            soft;
+#if (NGX_CACHE_PURGE_THREADS)
+    ngx_thread_pool_t                   *tp;
+    ngx_thread_task_t                   *task;
+    ngx_http_cache_purge_partial_task_ctx_t *ctx;
+#else
+    ngx_http_cache_purge_partial_ctx_t  *ctx;
     ngx_tree_ctx_t                       tree;
+#endif
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "purge_partial http in %s",
@@ -2377,6 +2550,56 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     }
     key.len--;
 
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    soft = ngx_http_cache_purge_request_mode(r, cplcf->conf->soft);
+
+#if (NGX_CACHE_PURGE_THREADS)
+
+    tp = ngx_http_cache_purge_thread_pool(r);
+    if (tp == NULL) {
+        return NGX_ERROR;
+    }
+
+    task = ngx_thread_task_alloc(r->pool,
+                                 sizeof(ngx_http_cache_purge_partial_task_ctx_t));
+    if (task == NULL) {
+        return NGX_ERROR;
+    }
+
+    ctx = task->ctx;
+    ngx_memzero(ctx, sizeof(ngx_http_cache_purge_partial_task_ctx_t));
+    ctx->request = r;
+    ctx->partial.cache = cache;
+    ctx->partial.key_len = key.len;
+    ctx->soft = soft;
+
+    if (key.len > 0) {
+        ctx->partial.key_partial = key.data;
+        ctx->partial.key_in_file = ngx_pnalloc(r->pool, sizeof(u_char) * key.len);
+        if (ctx->partial.key_in_file == NULL) {
+            return NGX_ERROR;
+        }
+    }
+
+    ctx->rc = NGX_ERROR;
+    task->handler = ngx_http_cache_purge_partial_thread;
+    task->event.data = ctx;
+    task->event.handler = ngx_http_cache_purge_partial_completion;
+    task->event.log = r->connection->log;
+    task->event.cancelable = 1;
+
+    if (ngx_thread_task_post(tp, task) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    ngx_add_timer(&task->event, 60000);
+    r->main->blocked++;
+    r->aio = 1;
+
+    return NGX_DONE;
+
+#else
+
     ctx = ngx_palloc(r->pool, sizeof(ngx_http_cache_purge_partial_ctx_t));
     if (ctx == NULL) {
         return NGX_ERROR;
@@ -2385,6 +2608,7 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     ngx_memzero(ctx, sizeof(ngx_http_cache_purge_partial_ctx_t));
     ctx->cache = cache;
     ctx->key_len = key.len;
+
     if (key.len > 0) {
         ctx->key_partial = key.data;
         ctx->key_in_file = ngx_pnalloc(r->pool, sizeof(u_char) * key.len);
@@ -2392,9 +2616,6 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
             return NGX_ERROR;
         }
     }
-
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
-    soft = ngx_http_cache_purge_request_mode(r, cplcf->conf->soft);
 
     /* Walk the tree and remove all the files matching key_partial */
     tree.init_handler = NULL;
@@ -2413,6 +2634,8 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     }
 
     return NGX_OK;
+
+#endif
 }
 
 ngx_int_t

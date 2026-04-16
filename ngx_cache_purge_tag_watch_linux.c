@@ -701,6 +701,133 @@ ngx_http_cache_tag_process_events(ngx_cycle_t *cycle) {
     return NGX_OK;
 }
 
+/* Arms the inotify epoll event and starts the 250 ms timer.  Called from the
+ * synchronous bootstrap path and from the thread-pool completion handler. */
+static ngx_int_t
+ngx_http_cache_tag_arm_watch(ngx_cycle_t *cycle) {
+    ngx_http_cache_tag_watch_runtime.inotify_conn->read->handler =
+        ngx_http_cache_tag_inotify_handler;
+    ngx_http_cache_tag_watch_runtime.inotify_conn->read->log = cycle->log;
+    if (ngx_add_event(ngx_http_cache_tag_watch_runtime.inotify_conn->read,
+                      NGX_READ_EVENT, 0) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                      "cache_tag failed to add inotify read event");
+        return NGX_ERROR;
+    }
+
+    ngx_http_cache_tag_watch_runtime.timer.handler =
+        ngx_http_cache_tag_timer_handler;
+    ngx_http_cache_tag_watch_runtime.timer.log = cycle->log;
+    ngx_http_cache_tag_watch_runtime.timer.data = NULL;
+    ngx_http_cache_tag_watch_runtime.timer.cancelable = 1;
+    ngx_add_timer(&ngx_http_cache_tag_watch_runtime.timer, 250);
+
+    return NGX_OK;
+}
+
+#if (NGX_CACHE_PURGE_THREADS)
+
+typedef struct {
+    ngx_cycle_t                       *cycle;
+    ngx_http_cache_purge_main_conf_t  *pmcf;
+    ngx_int_t                          rc;
+} ngx_http_cache_tag_bootstrap_ctx_t;
+
+/* Thread function: runs the full per-zone bootstrap (dir walk + tag writes)
+ * using a dedicated store connection.  The event loop's writer stays idle
+ * until the completion handler starts the timer — no locking needed. */
+static void
+ngx_http_cache_tag_bootstrap_thread(void *data, ngx_log_t *log) {
+    ngx_http_cache_tag_bootstrap_ctx_t  *ctx;
+    ngx_http_cache_tag_store_t          *writer;
+    ngx_http_cache_tag_zone_t           *zone;
+    ngx_http_cache_tag_zone_state_t      state;
+    ngx_uint_t                           i;
+
+    ctx = data;
+
+    writer = ngx_http_cache_tag_store_open_writer(ctx->pmcf, log);
+    if (writer == NULL) {
+        ctx->rc = NGX_ERROR;
+        return;
+    }
+
+    zone = ctx->pmcf->zones->elts;
+    for (i = 0; i < ctx->pmcf->zones->nelts; i++) {
+        if (zone[i].cache == NULL || zone[i].cache->path == NULL) {
+            continue;
+        }
+
+        if (ngx_http_cache_tag_store_get_zone_state(writer, &zone[i].zone_name,
+                &state, log) != NGX_OK) {
+            ctx->rc = NGX_ERROR;
+            ngx_http_cache_tag_store_close(writer);
+            return;
+        }
+
+        if (state.bootstrap_complete) {
+            ngx_log_error(NGX_LOG_NOTICE, log, 0,
+                          "cache_tag reusing persisted index for zone \"%V\"",
+                          &zone[i].zone_name);
+            if (ngx_http_cache_tag_add_watch_recursive(writer, &zone[i],
+                    &zone[i].cache->path->name, ctx->cycle,
+                    NGX_HTTP_CACHE_TAG_INDEX_DIRECT, NULL,
+                    state.last_bootstrap_at) == NGX_ERROR) {
+                ctx->rc = NGX_ERROR;
+                ngx_http_cache_tag_store_close(writer);
+                return;
+            }
+
+            state.last_bootstrap_at = ngx_time();
+            if (ngx_http_cache_tag_store_set_zone_state(writer,
+                    &zone[i].zone_name, &state, log) != NGX_OK) {
+                ctx->rc = NGX_ERROR;
+                ngx_http_cache_tag_store_close(writer);
+                return;
+            }
+            continue;
+        }
+
+        if (ngx_http_cache_tag_bootstrap_zone(writer, &zone[i],
+                                              ctx->cycle) != NGX_OK) {
+            ctx->rc = NGX_ERROR;
+            ngx_http_cache_tag_store_close(writer);
+            return;
+        }
+    }
+
+    ngx_http_cache_tag_store_close(writer);
+    ctx->rc = NGX_OK;
+}
+
+/* Completion handler: called in the event loop after the bootstrap thread
+ * finishes.  Arms inotify and starts the timer. */
+static void
+ngx_http_cache_tag_bootstrap_complete(ngx_event_t *ev) {
+    ngx_http_cache_tag_bootstrap_ctx_t  *ctx;
+    ngx_cycle_t                         *cycle;
+
+    ctx = ev->data;
+    cycle = ctx->cycle;
+
+    if (ctx->rc != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                      "cache_tag: background bootstrap failed, "
+                      "continuing with partial index");
+        /* Non-fatal: inotify will track changes going forward. */
+    }
+
+    if (ngx_http_cache_tag_arm_watch(cycle) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                      "cache_tag: failed to arm inotify after bootstrap");
+        return;
+    }
+
+    ngx_http_cache_tag_watch_runtime.active = 1;
+}
+
+#endif /* NGX_CACHE_PURGE_THREADS */
+
 ngx_int_t
 ngx_http_cache_tag_init_runtime(ngx_cycle_t *cycle,
                                 ngx_http_cache_purge_main_conf_t *pmcf) {
@@ -708,6 +835,12 @@ ngx_http_cache_tag_init_runtime(ngx_cycle_t *cycle,
     ngx_http_cache_tag_store_t       *writer;
     ngx_http_cache_tag_zone_state_t   state;
     ngx_uint_t                        i;
+#if (NGX_CACHE_PURGE_THREADS)
+    ngx_thread_pool_t                *tp;
+    ngx_thread_task_t                *task;
+    ngx_http_cache_tag_bootstrap_ctx_t *bctx;
+    static ngx_str_t                  default_pool_name = ngx_string("default");
+#endif
 
     ngx_memzero(&ngx_http_cache_tag_watch_runtime,
                 sizeof(ngx_http_cache_tag_watch_runtime));
@@ -772,6 +905,33 @@ ngx_http_cache_tag_init_runtime(ngx_cycle_t *cycle,
         return NGX_ERROR;
     }
 
+#if (NGX_CACHE_PURGE_THREADS)
+    /* Try to offload the blocking bootstrap walk to the default thread pool.
+     * If the thread pool is unavailable (nginx not built with --with-threads,
+     * or no "thread_pool default" directive), fall through to the sync path. */
+    tp = ngx_thread_pool_get(cycle, &default_pool_name);
+    if (tp != NULL) {
+        task = ngx_thread_task_alloc(cycle->pool,
+                                     sizeof(ngx_http_cache_tag_bootstrap_ctx_t));
+        if (task != NULL) {
+            bctx = task->ctx;
+            bctx->cycle = cycle;
+            bctx->pmcf  = pmcf;
+            bctx->rc    = NGX_OK;
+            task->handler       = ngx_http_cache_tag_bootstrap_thread;
+            task->event.handler = ngx_http_cache_tag_bootstrap_complete;
+            task->event.data    = bctx;
+            if (ngx_thread_task_post(tp, task) == NGX_OK) {
+                /* Async path: arm_watch and active=1 happen in completion
+                 * handler once the thread finishes. */
+                ngx_http_cache_tag_watch_runtime.initialized = 1;
+                return NGX_OK;
+            }
+        }
+    }
+    /* Thread pool not available or post failed — fall through to sync path. */
+#endif
+
     writer = ngx_http_cache_tag_store_writer();
     zone = pmcf->zones->elts;
     for (i = 0; i < pmcf->zones->nelts; i++) {
@@ -809,26 +969,9 @@ ngx_http_cache_tag_init_runtime(ngx_cycle_t *cycle,
         }
     }
 
-    /* Register the inotify fd with the event loop so the read handler fires
-     * immediately when the kernel delivers events — no 250 ms polling lag. */
-    ngx_http_cache_tag_watch_runtime.inotify_conn->read->handler =
-        ngx_http_cache_tag_inotify_handler;
-    ngx_http_cache_tag_watch_runtime.inotify_conn->read->log = cycle->log;
-    if (ngx_add_event(ngx_http_cache_tag_watch_runtime.inotify_conn->read,
-                      NGX_READ_EVENT, 0) != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
-                      "cache_tag failed to add inotify read event");
+    if (ngx_http_cache_tag_arm_watch(cycle) != NGX_OK) {
         return NGX_ERROR;
     }
-
-    /* Timer still needed to drain the inter-worker shm queue (no fd to
-     * watch for that) and to flush the pending ops to the backing store. */
-    ngx_http_cache_tag_watch_runtime.timer.handler =
-        ngx_http_cache_tag_timer_handler;
-    ngx_http_cache_tag_watch_runtime.timer.log = cycle->log;
-    ngx_http_cache_tag_watch_runtime.timer.data = NULL;
-    ngx_http_cache_tag_watch_runtime.timer.cancelable = 1;
-    ngx_add_timer(&ngx_http_cache_tag_watch_runtime.timer, 250);
 
     ngx_http_cache_tag_watch_runtime.initialized = 1;
     ngx_http_cache_tag_watch_runtime.active = 1;
