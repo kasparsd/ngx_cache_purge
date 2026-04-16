@@ -56,12 +56,12 @@ test:
 	TEST_NGINX_BINARY="$(NGINX_BUILD_PREFIX)/sbin/nginx" prove ./t
 
 bench: nginx-build
-	perl /workspace/bench/bench.pl \
+	perl ./bench/bench.pl \
 		--port 18080 \
-		--out-dir /workspace/bench/results
+		--out-dir ./bench/results
 
 bench-quick: nginx-build
-	perl /workspace/bench/bench.pl \
+	perl ./bench/bench.pl \
 		--quick \
 		--port 18080 \
-		--out-dir /workspace/bench/results
+		--out-dir ./bench/results
