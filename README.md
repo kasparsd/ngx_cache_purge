@@ -585,6 +585,8 @@ Results are written under `bench/results/<timestamp>/` with one JSON file per sc
 
 The benchmark suite now uses two explicit nginx templates: `bench/nginx.conf` for SQLite-backed scenarios and `bench/nginx_redis.conf` for Redis-backed scenarios. If more benchmark layouts are added later, drop another `*.conf` template into `bench/`, assign scenarios to it in `bench/bench.pl`, and the runner will restart nginx when either the template or backend changes. You can also override the template for a whole run with `--config-template <name-or-path>`.
 
+`bench/bench.pl` can also fail the run on threshold regressions with `--assert-file <path>`. The assertion file is JSON with optional `defaults` and per-scenario rules under `scenarios`, keyed by the scenario ids `exact`, `wild`, `tag-sqlite`, and `tag-redis`. Metrics use dot-paths into the summary object, for example `get.rps`, `get.cache_hit_rate`, `get.latency_us.p95`, or `purge.rps`. Each rule supports `min` and/or `max`. See `bench/assertions.example.json` for a concrete example.
+
 ### Docker Validation Config
 
 For manual validation inside the development container, the repository includes an example nginx configuration at `examples/docker-validation.conf`.

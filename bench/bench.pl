@@ -23,6 +23,7 @@ my %options = (
 );
 
 GetOptions(
+    'assert-file=s' => \$options{assert_file},
     'count=i'       => \$options{count},
     'config-template=s' => \$options{config_template},
     'concurrency=i' => \$options{concurrency},
@@ -183,6 +184,15 @@ my $summary = {
     scenarios    => \@results,
 };
 
+if (defined $options{assert_file}) {
+    my @violations = evaluate_assertions($summary, $options{assert_file});
+    $summary->{assertions} = {
+        file       => $options{assert_file},
+        passed     => @violations ? JSON::PP::false : JSON::PP::true,
+        violations => \@violations,
+    };
+}
+
 write_json("$run_dir/summary.json", $summary);
 my $table = format_table(\@results);
 open my $summary_fh, '>', "$run_dir/summary.txt" or die "open(summary.txt): $!";
@@ -192,6 +202,11 @@ close $summary_fh or die "close(summary.txt): $!";
 update_latest_symlink($options{out_dir}, $timestamp);
 print $table;
 print_summary_json($summary);
+
+if (defined $summary->{assertions}) {
+    print_assertion_result($summary->{assertions});
+    exit 1 unless $summary->{assertions}->{passed};
+}
 
 sub run_scenario {
     my ($scenario, $duration_s, $run_dir, $stats_endpoint) = @_;
@@ -437,6 +452,22 @@ sub print_summary_json {
     print JSON::PP->new->ascii->canonical->pretty->encode($summary);
 }
 
+sub print_assertion_result {
+    my ($assertions) = @_;
+
+    print "\nAssertions\n";
+
+    if ($assertions->{passed}) {
+        print "PASS: $assertions->{file}\n";
+        return;
+    }
+
+    print "FAIL: $assertions->{file}\n";
+    for my $violation (@{ $assertions->{violations} }) {
+        print "- $violation\n";
+    }
+}
+
 sub start_redis {
     stop_redis() if -e $redis_pid_file;
 
@@ -473,6 +504,120 @@ sub stop_redis {
 sub run_system {
     my @command = @_;
     system(@command) == 0 or die "command failed: @command\n";
+}
+
+sub evaluate_assertions {
+    my ($summary, $assert_file) = @_;
+
+    open my $fh, '<', $assert_file or die "open($assert_file): $!";
+    local $/;
+    my $json = <$fh>;
+    close $fh or die "close($assert_file): $!";
+
+    my $assertions = JSON::PP::decode_json($json);
+    die "assertion file must be a JSON object\n"
+        unless ref($assertions) eq 'HASH';
+
+    my %results_by_scenario = map { $_->{scenario} => $_ } @{ $summary->{scenarios} };
+    my @violations;
+
+    my $defaults = $assertions->{defaults};
+    if (defined $defaults) {
+        die "assertions.defaults must be a JSON object\n"
+            unless ref($defaults) eq 'HASH';
+    }
+
+    my $scenario_assertions = $assertions->{scenarios};
+    if (defined $scenario_assertions) {
+        die "assertions.scenarios must be a JSON object\n"
+            unless ref($scenario_assertions) eq 'HASH';
+    } else {
+        $scenario_assertions = {};
+    }
+
+    for my $scenario_key (sort keys %results_by_scenario) {
+        my $result = $results_by_scenario{$scenario_key};
+        my @threshold_sets;
+
+        push @threshold_sets, $defaults if defined $defaults;
+        push @threshold_sets, $scenario_assertions->{$scenario_key}
+            if exists $scenario_assertions->{$scenario_key};
+
+        for my $thresholds (@threshold_sets) {
+            next unless defined $thresholds;
+            die "assertions for $scenario_key must be a JSON object\n"
+                unless ref($thresholds) eq 'HASH';
+
+            for my $metric_path (sort keys %{$thresholds}) {
+                my $rule = $thresholds->{$metric_path};
+                die "assertion rule for $scenario_key/$metric_path must be a JSON object\n"
+                    unless ref($rule) eq 'HASH';
+
+                my $actual = resolve_metric_path($result, $metric_path);
+                push @violations, evaluate_metric_rule(
+                    $scenario_key,
+                    $metric_path,
+                    $actual,
+                    $rule,
+                );
+            }
+        }
+    }
+
+    return grep { defined $_ } @violations;
+}
+
+sub resolve_metric_path {
+    my ($data, $path) = @_;
+
+    my $cursor = $data;
+    for my $segment (split /\./, $path) {
+        die "metric path '$path' is invalid\n"
+            unless ref($cursor) eq 'HASH' && exists $cursor->{$segment};
+        $cursor = $cursor->{$segment};
+    }
+
+    die "metric path '$path' did not resolve to a scalar value\n"
+        if ref($cursor);
+
+    die "metric path '$path' did not resolve to a numeric value\n"
+        unless defined $cursor && $cursor =~ /^-?(?:\d+(?:\.\d+)?|\.\d+)$/;
+
+    return 0 + $cursor;
+}
+
+sub evaluate_metric_rule {
+    my ($scenario_key, $metric_path, $actual, $rule) = @_;
+
+    my @allowed = qw(min max);
+    for my $key (sort keys %{$rule}) {
+        die "unsupported assertion operator '$key' for $scenario_key/$metric_path\n"
+            unless grep { $_ eq $key } @allowed;
+        die "assertion operator '$key' for $scenario_key/$metric_path must be numeric\n"
+            unless defined $rule->{$key}
+                && !ref($rule->{$key})
+                && $rule->{$key} =~ /^-?(?:\d+(?:\.\d+)?|\.\d+)$/;
+    }
+
+    if (exists $rule->{min} && $actual < $rule->{min}) {
+        return sprintf('%s %s %.4f < min %.4f',
+            $scenario_key,
+            $metric_path,
+            $actual,
+            $rule->{min},
+        );
+    }
+
+    if (exists $rule->{max} && $actual > $rule->{max}) {
+        return sprintf('%s %s %.4f > max %.4f',
+            $scenario_key,
+            $metric_path,
+            $actual,
+            $rule->{max},
+        );
+    }
+
+    return undef;
 }
 
 sub discover_config_templates {
