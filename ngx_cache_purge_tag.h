@@ -77,6 +77,7 @@ typedef struct {
     ngx_str_t                     sqlite_path;
     ngx_http_cache_tag_redis_conf_t redis;
     ngx_array_t                  *zones;
+    size_t                        queue_shm_size;
 #if (NGX_LINUX)
     ngx_shm_zone_t               *queue_zone;
 #endif

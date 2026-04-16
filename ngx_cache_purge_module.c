@@ -188,6 +188,14 @@ static ngx_command_t  ngx_http_cache_purge_module_commands[] = {
         offsetof(ngx_http_cache_purge_loc_conf_t, cache_tag_watch),
         NULL
     },
+    {
+        ngx_string("cache_tag_queue_size"),
+        NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
+        ngx_conf_set_size_slot,
+        NGX_HTTP_MAIN_CONF_OFFSET,
+        offsetof(ngx_http_cache_purge_main_conf_t, queue_shm_size),
+        NULL
+    },
 
 # if (NGX_HTTP_FASTCGI)
     {
@@ -2573,12 +2581,16 @@ ngx_http_cache_purge_create_main_conf(ngx_conf_t *cf) {
         return NULL;
     }
 
+    conf->queue_shm_size = NGX_CONF_UNSET_SIZE;
+
     return conf;
 }
 
 char *
 ngx_http_cache_purge_init_main_conf(ngx_conf_t *cf, void *conf) {
     ngx_http_cache_purge_main_conf_t  *pmcf = conf;
+
+    ngx_conf_init_size_value(pmcf->queue_shm_size, NGX_HTTP_CACHE_TAG_QUEUE_SIZE);
 
 #if (NGX_LINUX)
     if (ngx_http_cache_tag_store_configured(pmcf)
