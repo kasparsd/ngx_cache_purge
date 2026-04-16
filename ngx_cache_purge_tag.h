@@ -56,8 +56,10 @@ typedef struct {
     ngx_str_t                     host;
     ngx_str_t                     unix_path;
     ngx_str_t                     password;
+    ngx_addr_t                    addr;
     ngx_uint_t                    port;
     ngx_uint_t                    db;
+    ngx_flag_t                    resolved;
     ngx_flag_t                    use_unix;
 } ngx_http_cache_tag_redis_conf_t;
 

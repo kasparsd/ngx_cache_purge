@@ -34,6 +34,7 @@ struct ngx_http_cache_tag_store_s {
         } sqlite;
         struct {
             ngx_socket_t                  fd;
+            ngx_connection_t             *connection;
             ngx_http_cache_purge_main_conf_t *pmcf;
             u_char                        recv_buf[4096];
             size_t                        recv_pos;

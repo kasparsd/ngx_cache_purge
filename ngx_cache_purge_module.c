@@ -153,6 +153,7 @@ char       *ngx_http_cache_purge_init_main_conf(ngx_conf_t *cf, void *conf);
 void       *ngx_http_cache_purge_create_loc_conf(ngx_conf_t *cf);
 char       *ngx_http_cache_purge_merge_loc_conf(ngx_conf_t *cf,
         void *parent, void *child);
+ngx_int_t   ngx_http_cache_purge_init_module(ngx_cycle_t *cycle);
 ngx_int_t   ngx_http_cache_purge_init_process(ngx_cycle_t *cycle);
 void        ngx_http_cache_purge_exit_process(ngx_cycle_t *cycle);
 
@@ -267,7 +268,7 @@ ngx_module_t  ngx_http_cache_purge_module = {
     ngx_http_cache_purge_module_commands,  /* module directives */
     NGX_HTTP_MODULE,                       /* module type */
     NULL,                                  /* init master */
-    NULL,                                  /* init module */
+    ngx_http_cache_purge_init_module,      /* init module */
     ngx_http_cache_purge_init_process,     /* init process */
     NULL,                                  /* init thread */
     NULL,                                  /* exit thread */
@@ -2037,6 +2038,47 @@ ngx_http_cache_purge_init(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
     ngx_http_file_cache_create_key(r);
 
     return NGX_OK;
+}
+
+ngx_int_t
+ngx_http_cache_purge_init_module(ngx_cycle_t *cycle) {
+    ngx_http_conf_ctx_t              *http_ctx;
+    ngx_http_cache_purge_main_conf_t *pmcf;
+    ngx_url_t                         u;
+
+#if !(NGX_LINUX)
+    (void) cycle;
+    return NGX_OK;
+#else
+    http_ctx = (ngx_http_conf_ctx_t *) ngx_get_conf(cycle->conf_ctx,
+               ngx_http_module);
+    if (http_ctx == NULL) {
+        return NGX_OK;
+    }
+
+    pmcf = http_ctx->main_conf[ngx_http_cache_purge_module.ctx_index];
+    if (pmcf == NULL || pmcf->backend != NGX_HTTP_CACHE_TAG_BACKEND_REDIS
+            || pmcf->redis.resolved) {
+        return NGX_OK;
+    }
+
+    ngx_memzero(&u, sizeof(ngx_url_t));
+    u.url = pmcf->redis.endpoint;
+    u.default_port = 6379;
+
+    if (ngx_parse_url(cycle->pool, &u) != NGX_OK || u.naddrs == 0) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
+                      "cache_tag redis endpoint \"%V\" could not be resolved: %s",
+                      &pmcf->redis.endpoint,
+                      u.err != NULL ? u.err : "no resolved address");
+        return NGX_ERROR;
+    }
+
+    pmcf->redis.addr = u.addrs[0];
+    pmcf->redis.resolved = 1;
+
+    return NGX_OK;
+#endif
 }
 
 ngx_int_t

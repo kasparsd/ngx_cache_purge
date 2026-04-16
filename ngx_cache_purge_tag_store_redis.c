@@ -2,7 +2,7 @@
 
 #if (NGX_LINUX)
 
-#include <netdb.h>
+#include <ngx_event_connect.h>
 
 static void ngx_http_cache_tag_store_redis_close(
     ngx_http_cache_tag_store_t *store);
@@ -129,6 +129,7 @@ ngx_http_cache_tag_store_redis_open(ngx_http_cache_purge_main_conf_t *pmcf,
     store->backend = NGX_HTTP_CACHE_TAG_BACKEND_REDIS;
     store->readonly = readonly;
     store->u.redis.pmcf = pmcf;
+    store->u.redis.connection = NULL;
     store->u.redis.fd = (ngx_socket_t) -1;
 
     if (ngx_http_cache_tag_store_redis_connect(store, log) != NGX_OK) {
@@ -701,7 +702,14 @@ ngx_http_cache_tag_store_redis_do_set_zone_state(ngx_http_cache_tag_store_t *sto
 
 static void
 ngx_http_cache_tag_store_redis_close_socket(ngx_http_cache_tag_store_t *store) {
-    if (store->u.redis.fd != (ngx_socket_t) -1) {
+    ngx_connection_t *c;
+
+    c = store->u.redis.connection;
+    if (c != NULL) {
+        store->u.redis.connection = NULL;
+        store->u.redis.fd = (ngx_socket_t) -1;
+        ngx_close_connection(c);
+    } else if (store->u.redis.fd != (ngx_socket_t) -1) {
         close(store->u.redis.fd);
         store->u.redis.fd = (ngx_socket_t) -1;
     }
@@ -723,96 +731,54 @@ static ngx_int_t
 ngx_http_cache_tag_store_redis_connect(ngx_http_cache_tag_store_t *store,
                                        ngx_log_t *log) {
     ngx_http_cache_tag_redis_conf_t *conf;
+    ngx_peer_connection_t            pc;
+    ngx_connection_t                *c;
     ngx_str_t                        auth_args[2];
     ngx_str_t                        select_args[2];
     u_char                           db_buf[NGX_INT_T_LEN + 1];
-    int                              fd;
+    ngx_int_t                        rc;
 
     conf = &store->u.redis.pmcf->redis;
-    fd = -1;
-
-    if (conf->use_unix) {
-        struct sockaddr_un addr;
-
-        fd = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (fd == -1) {
-            ngx_log_error(NGX_LOG_ERR, log, ngx_errno,
-                          "redis socket(AF_UNIX) failed");
-            return NGX_ERROR;
-        }
-
-        ngx_memzero(&addr, sizeof(addr));
-        addr.sun_family = AF_UNIX;
-        if (conf->unix_path.len >= sizeof(addr.sun_path)) {
-            ngx_log_error(NGX_LOG_ERR, log, 0,
-                          "redis unix socket path too long: \"%V\"",
-                          &conf->unix_path);
-            close(fd);
-            return NGX_ERROR;
-        }
-
-        ngx_memcpy(addr.sun_path, conf->unix_path.data, conf->unix_path.len);
-        addr.sun_path[conf->unix_path.len] = '\0';
-
-        if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) == -1) {
-            ngx_log_error(NGX_LOG_ERR, log, ngx_errno,
-                          "redis connect failed for unix socket \"%V\"",
-                          &conf->unix_path);
-            close(fd);
-            return NGX_ERROR;
-        }
-    } else {
-        struct addrinfo   hints;
-        struct addrinfo  *res, *rp;
-        u_char           *host_buf;
-        char              port_buf[NGX_INT_T_LEN + 1];
-        int               gai_rc;
-
-        ngx_memzero(&hints, sizeof(hints));
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_socktype = SOCK_STREAM;
-        ngx_snprintf((u_char *) port_buf, sizeof(port_buf), "%ui%Z", conf->port);
-
-        host_buf = ngx_alloc(conf->host.len + 1, log);
-        if (host_buf == NULL) {
-            return NGX_ERROR;
-        }
-        ngx_memcpy(host_buf, conf->host.data, conf->host.len);
-        host_buf[conf->host.len] = '\0';
-
-        gai_rc = getaddrinfo((const char *) host_buf, port_buf, &hints, &res);
-        ngx_free(host_buf);
-        if (gai_rc != 0) {
-            ngx_log_error(NGX_LOG_ERR, log, 0,
-                          "redis getaddrinfo failed for \"%V\": %s",
-                          &conf->host, gai_strerror(gai_rc));
-            return NGX_ERROR;
-        }
-
-        for (rp = res; rp != NULL; rp = rp->ai_next) {
-            fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-            if (fd == -1) {
-                continue;
-            }
-
-            if (connect(fd, rp->ai_addr, rp->ai_addrlen) == 0) {
-                break;
-            }
-
-            close(fd);
-            fd = -1;
-        }
-
-        freeaddrinfo(res);
-
-        if (fd == -1) {
-            ngx_log_error(NGX_LOG_ERR, log, ngx_errno,
-                          "redis connect failed for \"%V\"", &conf->endpoint);
-            return NGX_ERROR;
-        }
+    if (!conf->resolved || conf->addr.sockaddr == NULL) {
+        ngx_log_error(NGX_LOG_ERR, log, 0,
+                      "redis endpoint \"%V\" was not resolved during module init",
+                      &conf->endpoint);
+        return NGX_ERROR;
     }
 
-    store->u.redis.fd = fd;
+    ngx_memzero(&pc, sizeof(ngx_peer_connection_t));
+    pc.sockaddr = conf->addr.sockaddr;
+    pc.socklen = conf->addr.socklen;
+    pc.name = &conf->addr.name;
+    pc.get = ngx_event_get_peer;
+    pc.log = log;
+    pc.log_error = NGX_ERROR_ERR;
+
+    rc = ngx_event_connect_peer(&pc);
+    if (rc != NGX_OK && rc != NGX_AGAIN) {
+        ngx_log_error(NGX_LOG_ERR, log, 0,
+                      "redis connect failed for \"%V\"", &conf->endpoint);
+        return NGX_ERROR;
+    }
+
+    c = pc.connection;
+    if (c == NULL) {
+        ngx_log_error(NGX_LOG_ERR, log, 0,
+                      "redis connect did not create a connection for \"%V\"",
+                      &conf->endpoint);
+        return NGX_ERROR;
+    }
+
+    if (ngx_blocking(c->fd) == -1) {
+        ngx_log_error(NGX_LOG_ERR, log, ngx_socket_errno,
+                      ngx_blocking_n " failed for redis endpoint \"%V\"",
+                      &conf->endpoint);
+        ngx_close_connection(c);
+        return NGX_ERROR;
+    }
+
+    store->u.redis.connection = c;
+    store->u.redis.fd = c->fd;
 
     if (conf->password.len > 0) {
         auth_args[0] = ngx_http_cache_tag_redis_cmd_auth;
