@@ -26,6 +26,7 @@ ngx_http_cache_tag_index_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
                        "cache_tag_index requires Linux inotify support");
     return NGX_CONF_ERROR;
 #else
+#if (NGX_CACHE_PURGE_SQLITE)
     if (ngx_strcmp(value[1].data, "sqlite") == 0) {
         if (cf->args->nelts != 3) {
             return NGX_CONF_ERROR;
@@ -35,6 +36,14 @@ ngx_http_cache_tag_index_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
         pmcf->sqlite_path = value[2];
         return NGX_CONF_OK;
     }
+#else
+    if (ngx_strcmp(value[1].data, "sqlite") == 0) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "cache_tag_index sqlite backend requires SQLite3 "
+                           "library (not found at build time)");
+        return NGX_CONF_ERROR;
+    }
+#endif
 
     if (ngx_strcmp(value[1].data, "redis") == 0) {
         return ngx_http_cache_tag_index_conf_redis(cf, pmcf, value);
