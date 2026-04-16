@@ -1531,13 +1531,7 @@ ngx_http_cache_purge_thread_pool(ngx_http_request_t *r) {
         name = default_name;
     }
 
-    tp = ngx_thread_pool_get((ngx_cycle_t *) ngx_cycle, &name);
-    if (tp == NULL) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "thread pool \"%V\" not found", &name);
-    }
-
-    return tp;
+    return ngx_thread_pool_get((ngx_cycle_t *) ngx_cycle, &name);
 }
 
 static void
@@ -2522,16 +2516,15 @@ ngx_http_cache_purge_all(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
 ngx_int_t
 ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
     ngx_http_cache_purge_loc_conf_t     *cplcf;
+    ngx_http_cache_purge_partial_ctx_t  *ctx;
     ngx_str_t                           *keys;
     ngx_str_t                            key;
     ngx_int_t                            soft;
+    ngx_tree_ctx_t                       tree;
 #if (NGX_CACHE_PURGE_THREADS)
     ngx_thread_pool_t                   *tp;
     ngx_thread_task_t                   *task;
-    ngx_http_cache_purge_partial_task_ctx_t *ctx;
-#else
-    ngx_http_cache_purge_partial_ctx_t  *ctx;
-    ngx_tree_ctx_t                       tree;
+    ngx_http_cache_purge_partial_task_ctx_t *tctx;
 #endif
 
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -2554,52 +2547,52 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     soft = ngx_http_cache_purge_request_mode(r, cplcf->conf->soft);
 
 #if (NGX_CACHE_PURGE_THREADS)
-
+    /* If a thread pool is available, offload the blocking directory walk.
+     * Falls through to the synchronous path when no pool is configured. */
     tp = ngx_http_cache_purge_thread_pool(r);
-    if (tp == NULL) {
-        return NGX_ERROR;
-    }
-
-    task = ngx_thread_task_alloc(r->pool,
-                                 sizeof(ngx_http_cache_purge_partial_task_ctx_t));
-    if (task == NULL) {
-        return NGX_ERROR;
-    }
-
-    ctx = task->ctx;
-    ngx_memzero(ctx, sizeof(ngx_http_cache_purge_partial_task_ctx_t));
-    ctx->request = r;
-    ctx->partial.cache = cache;
-    ctx->partial.key_len = key.len;
-    ctx->soft = soft;
-
-    if (key.len > 0) {
-        ctx->partial.key_partial = key.data;
-        ctx->partial.key_in_file = ngx_pnalloc(r->pool, sizeof(u_char) * key.len);
-        if (ctx->partial.key_in_file == NULL) {
+    if (tp != NULL) {
+        task = ngx_thread_task_alloc(r->pool,
+                                     sizeof(ngx_http_cache_purge_partial_task_ctx_t));
+        if (task == NULL) {
             return NGX_ERROR;
         }
+
+        tctx = task->ctx;
+        ngx_memzero(tctx, sizeof(ngx_http_cache_purge_partial_task_ctx_t));
+        tctx->request = r;
+        tctx->partial.cache = cache;
+        tctx->partial.key_len = key.len;
+        tctx->soft = soft;
+
+        if (key.len > 0) {
+            tctx->partial.key_partial = key.data;
+            tctx->partial.key_in_file = ngx_pnalloc(r->pool,
+                                                    sizeof(u_char) * key.len);
+            if (tctx->partial.key_in_file == NULL) {
+                return NGX_ERROR;
+            }
+        }
+
+        tctx->rc = NGX_ERROR;
+        task->handler = ngx_http_cache_purge_partial_thread;
+        task->event.data = tctx;
+        task->event.handler = ngx_http_cache_purge_partial_completion;
+        task->event.log = r->connection->log;
+        task->event.cancelable = 1;
+
+        if (ngx_thread_task_post(tp, task) != NGX_OK) {
+            return NGX_ERROR;
+        }
+
+        ngx_add_timer(&task->event, 60000);
+        r->main->blocked++;
+        r->aio = 1;
+
+        return NGX_DONE;
     }
+#endif
 
-    ctx->rc = NGX_ERROR;
-    task->handler = ngx_http_cache_purge_partial_thread;
-    task->event.data = ctx;
-    task->event.handler = ngx_http_cache_purge_partial_completion;
-    task->event.log = r->connection->log;
-    task->event.cancelable = 1;
-
-    if (ngx_thread_task_post(tp, task) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
-    ngx_add_timer(&task->event, 60000);
-    r->main->blocked++;
-    r->aio = 1;
-
-    return NGX_DONE;
-
-#else
-
+    /* Synchronous fallback: no thread pool configured or threads not built. */
     ctx = ngx_palloc(r->pool, sizeof(ngx_http_cache_purge_partial_ctx_t));
     if (ctx == NULL) {
         return NGX_ERROR;
@@ -2634,8 +2627,6 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     }
 
     return NGX_OK;
-
-#endif
 }
 
 ngx_int_t
