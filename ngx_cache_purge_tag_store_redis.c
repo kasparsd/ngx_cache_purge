@@ -61,6 +61,12 @@ static ngx_int_t ngx_http_cache_tag_store_redis_delete_keys(
 static ngx_int_t ngx_http_cache_tag_store_redis_do_replace_file_tags(
     ngx_http_cache_tag_store_t *store, ngx_str_t *zone_name, ngx_str_t *path,
     time_t mtime, off_t size, ngx_array_t *tags, ngx_log_t *log);
+static ngx_int_t ngx_http_cache_tag_store_redis_do_get_zone_state(
+    ngx_http_cache_tag_store_t *store, ngx_str_t *zone_name,
+    ngx_http_cache_tag_zone_state_t *state, ngx_log_t *log);
+static ngx_int_t ngx_http_cache_tag_store_redis_do_set_zone_state(
+    ngx_http_cache_tag_store_t *store, ngx_str_t *zone_name,
+    ngx_http_cache_tag_zone_state_t *state, ngx_log_t *log);
 static ngx_int_t ngx_http_cache_tag_store_redis_do_delete_file(
     ngx_http_cache_tag_store_t *store, ngx_str_t *zone_name, ngx_str_t *path,
     ngx_log_t *log);
@@ -552,7 +558,36 @@ ngx_http_cache_tag_store_redis_get_zone_state(ngx_http_cache_tag_store_t *store,
         ngx_str_t *zone_name,
         ngx_http_cache_tag_zone_state_t *state,
         ngx_log_t *log) {
-    u_char      zone_key_buf[256];
+    ngx_uint_t  retry;
+    ngx_int_t   rc;
+
+    rc = NGX_ERROR;
+    for (retry = 0; retry < 2; retry++) {
+        if (retry > 0) {
+            ngx_http_cache_tag_store_redis_close_socket(store);
+            ngx_log_error(NGX_LOG_WARN, log, 0,
+                          "cache_tag redis get_zone_state failed, "
+                          "retrying after reconnect for zone \"%V\"", zone_name);
+        }
+        if (ngx_http_cache_tag_store_redis_ensure_connected(store, log) != NGX_OK) {
+            return NGX_ERROR;
+        }
+        rc = ngx_http_cache_tag_store_redis_do_get_zone_state(store, zone_name,
+                                                               state, log);
+        if (rc == NGX_OK) {
+            break;
+        }
+    }
+
+    return rc;
+}
+
+static ngx_int_t
+ngx_http_cache_tag_store_redis_do_get_zone_state(ngx_http_cache_tag_store_t *store,
+        ngx_str_t *zone_name,
+        ngx_http_cache_tag_zone_state_t *state,
+        ngx_log_t *log) {
+    u_char      zone_key_buf[1024];
     ngx_str_t   zone_key;
     ngx_str_t   args[4];
     size_t      key_len;
@@ -594,7 +629,36 @@ ngx_http_cache_tag_store_redis_set_zone_state(ngx_http_cache_tag_store_t *store,
         ngx_str_t *zone_name,
         ngx_http_cache_tag_zone_state_t *state,
         ngx_log_t *log) {
-    u_char     zone_key_buf[256];
+    ngx_uint_t  retry;
+    ngx_int_t   rc;
+
+    rc = NGX_ERROR;
+    for (retry = 0; retry < 2; retry++) {
+        if (retry > 0) {
+            ngx_http_cache_tag_store_redis_close_socket(store);
+            ngx_log_error(NGX_LOG_WARN, log, 0,
+                          "cache_tag redis set_zone_state failed, "
+                          "retrying after reconnect for zone \"%V\"", zone_name);
+        }
+        if (ngx_http_cache_tag_store_redis_ensure_connected(store, log) != NGX_OK) {
+            return NGX_ERROR;
+        }
+        rc = ngx_http_cache_tag_store_redis_do_set_zone_state(store, zone_name,
+                                                               state, log);
+        if (rc == NGX_OK) {
+            break;
+        }
+    }
+
+    return rc;
+}
+
+static ngx_int_t
+ngx_http_cache_tag_store_redis_do_set_zone_state(ngx_http_cache_tag_store_t *store,
+        ngx_str_t *zone_name,
+        ngx_http_cache_tag_zone_state_t *state,
+        ngx_log_t *log) {
+    u_char     zone_key_buf[1024];
     ngx_str_t  zone_key;
     ngx_str_t  args[6];
     u_char     bootstrap_buf[2];
@@ -1028,7 +1092,13 @@ ngx_http_cache_tag_store_redis_read_byte(ngx_http_cache_tag_store_t *store,
     if (store->u.redis.recv_pos >= store->u.redis.recv_len) {
         n = recv(store->u.redis.fd, store->u.redis.recv_buf,
                  sizeof(store->u.redis.recv_buf), 0);
-        if (n <= 0) {
+        if (n == 0) {
+            ngx_log_error(NGX_LOG_ERR, log, 0,
+                          "redis connection closed");
+            ngx_http_cache_tag_store_redis_close_socket(store);
+            return NGX_ERROR;
+        }
+        if (n < 0) {
             ngx_log_error(NGX_LOG_ERR, log, ngx_errno,
                           "redis recv failed");
             ngx_http_cache_tag_store_redis_close_socket(store);
