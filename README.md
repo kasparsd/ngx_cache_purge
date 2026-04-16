@@ -1,5 +1,8 @@
 # ngx_cache_purge
 
+[![CI](https://github.com/kasparsd/ngx_cache_purge/actions/workflows/ci.yml/badge.svg)](https://github.com/kasparsd/ngx_cache_purge/actions/workflows/ci.yml)
+[![Bench](https://github.com/kasparsd/ngx_cache_purge/actions/workflows/bench.yml/badge.svg)](https://github.com/kasparsd/ngx_cache_purge/actions/workflows/bench.yml)
+
 `ngx_cache_purge` is an `nginx` module that adds cache purge support for `FastCGI`, `proxy`, `SCGI`, and `uWSGI` caches. A purge operation removes or expires cached content that matches the cache key, wildcard key, or configured cache tags for the request.
 
 _This module is not distributed with the NGINX source. See [Installation Instructions](#installation-instructions)._
