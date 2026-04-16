@@ -582,8 +582,7 @@ Start it inside the container after building nginx:
 ```bash
 make shell
 make nginx-build
-rm -rf /tmp/ngx_cache_purge_demo_* /tmp/ngx_cache_purge_temp /tmp/ngx_cache_purge_demo_tags.sqlite
-mkdir -p /tmp/ngx_cache_purge_temp /tmp/logs
+rm -rf /tmp/ngx_cache_*
 /opt/nginx/sbin/nginx -p /tmp -c /workspace/examples/docker-validation.conf
 ```
 
