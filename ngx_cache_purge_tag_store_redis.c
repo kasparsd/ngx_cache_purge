@@ -177,7 +177,7 @@ ngx_http_cache_tag_store_redis_replace_file_tags(ngx_http_cache_tag_store_t *sto
     for (retry = 0; retry < 2; retry++) {
         if (retry > 0) {
             ngx_http_cache_tag_store_redis_close_socket(store);
-            ngx_log_error(NGX_LOG_WARN, log, 0,
+            ngx_log_error(NGX_LOG_NOTICE, log, 0,
                           "cache_tag redis replace_file_tags failed, "
                           "retrying after reconnect for zone \"%V\" path \"%V\"",
                           zone_name, path);
@@ -373,7 +373,7 @@ ngx_http_cache_tag_store_redis_delete_file(ngx_http_cache_tag_store_t *store,
     for (retry = 0; retry < 2; retry++) {
         if (retry > 0) {
             ngx_http_cache_tag_store_redis_close_socket(store);
-            ngx_log_error(NGX_LOG_WARN, log, 0,
+            ngx_log_error(NGX_LOG_NOTICE, log, 0,
                           "cache_tag redis delete_file failed, "
                           "retrying after reconnect for zone \"%V\" path \"%V\"",
                           zone_name, path);
@@ -480,7 +480,7 @@ ngx_http_cache_tag_store_redis_collect_paths_by_tags(
     for (retry = 0; retry < 2; retry++) {
         if (retry > 0) {
             ngx_http_cache_tag_store_redis_close_socket(store);
-            ngx_log_error(NGX_LOG_WARN, log, 0,
+            ngx_log_error(NGX_LOG_NOTICE, log, 0,
                           "cache_tag redis collect_paths failed, "
                           "retrying after reconnect for zone \"%V\"", zone_name);
         }
@@ -563,7 +563,7 @@ ngx_http_cache_tag_store_redis_get_zone_state(ngx_http_cache_tag_store_t *store,
     for (retry = 0; retry < 2; retry++) {
         if (retry > 0) {
             ngx_http_cache_tag_store_redis_close_socket(store);
-            ngx_log_error(NGX_LOG_WARN, log, 0,
+            ngx_log_error(NGX_LOG_NOTICE, log, 0,
                           "cache_tag redis get_zone_state failed, "
                           "retrying after reconnect for zone \"%V\"", zone_name);
         }
@@ -634,7 +634,7 @@ ngx_http_cache_tag_store_redis_set_zone_state(ngx_http_cache_tag_store_t *store,
     for (retry = 0; retry < 2; retry++) {
         if (retry > 0) {
             ngx_http_cache_tag_store_redis_close_socket(store);
-            ngx_log_error(NGX_LOG_WARN, log, 0,
+            ngx_log_error(NGX_LOG_NOTICE, log, 0,
                           "cache_tag redis set_zone_state failed, "
                           "retrying after reconnect for zone \"%V\"", zone_name);
         }
