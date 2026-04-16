@@ -38,10 +38,10 @@
     #error This module cannot be build against an unknown nginx version.
 #endif
 
-#define NGX_REPONSE_TYPE_HTML 1
-#define NGX_REPONSE_TYPE_XML  2
-#define NGX_REPONSE_TYPE_JSON 3
-#define NGX_REPONSE_TYPE_TEXT 4
+#define NGX_RESPONSE_TYPE_HTML 1
+#define NGX_RESPONSE_TYPE_XML  2
+#define NGX_RESPONSE_TYPE_JSON 3
+#define NGX_RESPONSE_TYPE_TEXT 4
 
 static const char ngx_http_cache_purge_content_type_json[] = "application/json";
 static const char ngx_http_cache_purge_content_type_html[] = "text/html";
@@ -136,6 +136,10 @@ void        ngx_http_cache_purge_handler(ngx_http_request_t *r);
 
 ngx_int_t   ngx_http_file_cache_purge(ngx_http_request_t *r);
 ngx_int_t   ngx_http_file_cache_purge_soft(ngx_http_request_t *r);
+static ngx_int_t ngx_http_purge_cache_exact_key_file(ngx_tree_ctx_t *ctx,
+    ngx_str_t *path);
+ngx_int_t   ngx_http_cache_purge_by_exact_key(ngx_http_request_t *r,
+    ngx_http_file_cache_t *cache, ngx_int_t soft);
 
 
 ngx_int_t   ngx_http_cache_purge_all(ngx_http_request_t *r, ngx_http_file_cache_t *cache);
@@ -295,7 +299,7 @@ ngx_http_cache_purge_dispatch_special(ngx_http_request_t *r,
 
         if (rc == NGX_OK && tags != NULL && tags->nelts > 0) {
             *handled = 1;
-            return ngx_http_cache_tag_purge(r, cache);
+            return ngx_http_cache_tag_purge(r, cache, tags);
         }
     }
 
@@ -1379,13 +1383,13 @@ ngx_http_cache_purge_response_type_conf(ngx_conf_t *cf, ngx_command_t *cmd, void
     }
 
     if (ngx_strcmp(value[1].data, "html") == 0) {
-        cplcf->resptype = NGX_REPONSE_TYPE_HTML;
+        cplcf->resptype = NGX_RESPONSE_TYPE_HTML;
     } else if (ngx_strcmp(value[1].data, "xml") == 0) {
-        cplcf->resptype = NGX_REPONSE_TYPE_XML;
+        cplcf->resptype = NGX_RESPONSE_TYPE_XML;
     } else if (ngx_strcmp(value[1].data, "json") == 0) {
-        cplcf->resptype = NGX_REPONSE_TYPE_JSON;
+        cplcf->resptype = NGX_RESPONSE_TYPE_JSON;
     } else if (ngx_strcmp(value[1].data, "text") == 0) {
-        cplcf->resptype = NGX_REPONSE_TYPE_TEXT;
+        cplcf->resptype = NGX_RESPONSE_TYPE_TEXT;
     }
 
     return NGX_CONF_OK;
@@ -1423,6 +1427,7 @@ ngx_http_purge_file_cache_delete_file(ngx_tree_ctx_t *ctx, ngx_str_t *path) {
     if (ngx_delete_file(path->data) == NGX_FILE_ERROR) {
         ngx_log_error(NGX_LOG_CRIT, ctx->log, ngx_errno,
                       ngx_delete_file_n " \"%s\" failed", path->data);
+        return NGX_ERROR;
     }
 
     return NGX_OK;
@@ -1801,7 +1806,6 @@ ngx_http_cache_purge_send_response(ngx_http_request_t *r) {
     size_t resp_tmpl_len;
     u_char *buf;
     u_char *buf_keydata;
-    u_char *p;
     const char *resp_ct;
     size_t resp_ct_size;
     const char *resp_body;
@@ -1810,35 +1814,36 @@ ngx_http_cache_purge_send_response(ngx_http_request_t *r) {
     ngx_http_cache_purge_loc_conf_t   *cplcf;
     cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
 
+    if (r->cache->keys.nelts == 0) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
     key = r->cache->keys.elts;
 
-    buf_keydata = ngx_pcalloc(r->pool, key[0].len+1);
+    buf_keydata = ngx_pcalloc(r->pool, key[0].len + 1);
     if (buf_keydata == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    p = ngx_cpymem(buf_keydata, key[0].data, key[0].len);
-    if (p == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
+    (void) ngx_cpymem(buf_keydata, key[0].data, key[0].len);
 
     switch (cplcf->resptype) {
 
-    case NGX_REPONSE_TYPE_JSON:
+    case NGX_RESPONSE_TYPE_JSON:
         resp_ct = ngx_http_cache_purge_content_type_json;
         resp_ct_size = ngx_http_cache_purge_content_type_json_size;
         resp_body = ngx_http_cache_purge_body_templ_json;
         resp_body_size = ngx_http_cache_purge_body_templ_json_size;
         break;
 
-    case NGX_REPONSE_TYPE_XML:
+    case NGX_RESPONSE_TYPE_XML:
         resp_ct = ngx_http_cache_purge_content_type_xml;
         resp_ct_size = ngx_http_cache_purge_content_type_xml_size;
         resp_body = ngx_http_cache_purge_body_templ_xml;
         resp_body_size = ngx_http_cache_purge_body_templ_xml_size;
         break;
 
-    case NGX_REPONSE_TYPE_TEXT:
+    case NGX_RESPONSE_TYPE_TEXT:
         resp_ct = ngx_http_cache_purge_content_type_text;
         resp_ct_size = ngx_http_cache_purge_content_type_text_size;
         resp_body = ngx_http_cache_purge_body_templ_text;
@@ -1846,7 +1851,7 @@ ngx_http_cache_purge_send_response(ngx_http_request_t *r) {
         break;
 
     default:
-    case NGX_REPONSE_TYPE_HTML:
+    case NGX_RESPONSE_TYPE_HTML:
         resp_ct = ngx_http_cache_purge_content_type_html;
         resp_ct_size = ngx_http_cache_purge_content_type_html_size;
         resp_body = ngx_http_cache_purge_body_templ_html;
@@ -1865,10 +1870,7 @@ ngx_http_cache_purge_send_response(ngx_http_request_t *r) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    p = ngx_snprintf(buf, resp_tmpl_len, resp_body, buf_keydata);
-    if (p == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
+    ngx_snprintf(buf, resp_tmpl_len, resp_body, buf_keydata);
 
     len = body_len + key[0].len;
 
@@ -2070,6 +2072,138 @@ ngx_http_cache_purge_exit_process(ngx_cycle_t *cycle) {
     ngx_http_cache_tag_process_exit();
 }
 
+/*
+ * Context passed through ngx_walk_tree when purging all cache files
+ * whose stored key string matches the requested key exactly.
+ */
+typedef struct {
+    ngx_http_file_cache_t  *cache;
+    u_char                 *key_data;   /* raw cache key string             */
+    size_t                  key_len;    /* length of key_data               */
+    u_char                 *buf;        /* scratch buffer (key_len + 1)     */
+    ngx_int_t               soft;       /* 1 = soft purge, 0 = hard delete  */
+    ngx_int_t               deleted;    /* number of files successfully removed */
+} ngx_http_cache_purge_exact_ctx_t;
+
+/*
+ * ngx_walk_tree file handler: delete a cache file when its stored key string
+ * is an exact byte-for-byte match of the key we are purging.
+ *
+ * nginx stores the cache key in the cache file at offset
+ *   sizeof(ngx_http_file_cache_header_t) + 6
+ * where the 6 bytes are the literal "\nKEY: " prefix.  The key string is
+ * terminated by a LF character.  Reading key_len+1 bytes and verifying that
+ * the extra byte is LF gives us a true exact match rather than a prefix match.
+ *
+ * This approach is Vary-agnostic: variant cache files (created by gzip_vary,
+ * brotli_vary, etc.) store the *same* key string as the primary entry but at
+ * a different file-name hash, so they are matched and removed automatically.
+ */
+static ngx_int_t
+ngx_http_purge_cache_exact_key_file(ngx_tree_ctx_t *ctx, ngx_str_t *path)
+{
+    ngx_http_cache_purge_exact_ctx_t  *data;
+    ngx_file_t                         file;
+    ssize_t                            n;
+
+    data = ctx->data;
+
+    ngx_memzero(&file, sizeof(ngx_file_t));
+    file.fd = ngx_open_file(path->data, NGX_FILE_RDONLY, NGX_FILE_OPEN,
+                            NGX_FILE_DEFAULT_ACCESS);
+    if (file.fd == NGX_INVALID_FILE) {
+        return NGX_OK;   /* skip; another worker may be writing it */
+    }
+    file.log = ctx->log;
+
+    /* Read the key string plus its LF terminator in one shot. */
+    n = ngx_read_file(&file, data->buf, data->key_len + 1,
+                      sizeof(ngx_http_file_cache_header_t) + 6);
+    ngx_close_file(file.fd);
+
+    if ((size_t) n != data->key_len + 1) {
+        return NGX_OK;   /* too short — not a match */
+    }
+
+    /* Byte-exact key comparison followed by LF terminator check. */
+    if (ngx_memcmp(data->buf, data->key_data, data->key_len) != 0
+        || data->buf[data->key_len] != LF)
+    {
+        return NGX_OK;
+    }
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ctx->log, 0,
+                   "http file cache purge exact key match: \"%s\"",
+                   path->data);
+
+    if (ngx_http_cache_purge_by_path(data->cache, path,
+                                     data->soft, ctx->log) == NGX_OK)
+    {
+        data->deleted++;
+    }
+
+    return NGX_OK;   /* keep walking regardless of delete outcome */
+}
+
+/*
+ * Walk the entire cache directory tree and remove every file whose stored
+ * cache key string exactly matches the key of the current request.
+ *
+ * Because the match is on the raw key string (not the MD5 hash used as the
+ * file name), this function automatically handles all cache variants created
+ * by Vary-aware features such as gzip_vary, brotli_vary, and zstd_vary: those
+ * variant files are stored at different hashes but contain the same key string,
+ * so they are found and removed without any encoding-specific logic.
+ *
+ * Returns NGX_OK     if at least one file was deleted,
+ *         NGX_DECLINED if the key was not found in the cache,
+ *         NGX_ERROR   on allocation or walk failure.
+ */
+ngx_int_t
+ngx_http_cache_purge_by_exact_key(ngx_http_request_t *r,
+    ngx_http_file_cache_t *cache, ngx_int_t soft)
+{
+    ngx_http_cache_purge_exact_ctx_t  ctx;
+    ngx_str_t                        *keys;
+    ngx_tree_ctx_t                    tree;
+
+    if (r->cache->keys.nelts == 0) {
+        return NGX_ERROR;
+    }
+
+    keys = r->cache->keys.elts;
+    if (keys[0].len == 0) {
+        return NGX_ERROR;
+    }
+
+    ngx_memzero(&ctx, sizeof(ctx));
+    ctx.cache    = cache;
+    ctx.key_data = keys[0].data;
+    ctx.key_len  = keys[0].len;
+    ctx.soft     = soft;
+
+    /* +1 for the LF terminator we read alongside the key */
+    ctx.buf = ngx_palloc(r->pool, ctx.key_len + 1);
+    if (ctx.buf == NULL) {
+        return NGX_ERROR;
+    }
+
+    tree.init_handler      = NULL;
+    tree.file_handler      = ngx_http_purge_cache_exact_key_file;
+    tree.pre_tree_handler  = ngx_http_purge_file_cache_noop;
+    tree.post_tree_handler = ngx_http_purge_file_cache_noop;
+    tree.spec_handler      = ngx_http_purge_file_cache_noop;
+    tree.data  = &ctx;
+    tree.alloc = 0;
+    tree.log   = ngx_cycle->log;
+
+    if (ngx_walk_tree(&tree, &cache->path->name) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    return ctx.deleted > 0 ? NGX_OK : NGX_DECLINED;
+}
+
 void
 ngx_http_cache_purge_handler(ngx_http_request_t *r) {
     ngx_http_cache_purge_loc_conf_t     *cplcf;
@@ -2094,15 +2228,17 @@ ngx_http_cache_purge_handler(ngx_http_request_t *r) {
             && tags->nelts > 0) {
         rc = NGX_OK;
     } else if (!cplcf->conf->purge_all && !ngx_http_cache_purge_is_partial(r)) {
-        if (mode) {
-            rc = ngx_http_file_cache_purge_soft(r);
-        } else {
-            rc = ngx_http_file_cache_purge(r);
-        }
+        /*
+         * Walk the cache directory and remove every file whose stored cache
+         * key string exactly matches the requested key.  This handles all
+         * Vary-based variants (gzip_vary, brotli_vary, …) transparently: each
+         * variant file contains the same key string as the primary entry even
+         * though its on-disk hash is different.
+         */
+        rc = ngx_http_cache_purge_by_exact_key(r, r->cache->file_cache, mode);
 
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "http file cache purge: %i, \"%s\"",
-                       rc, r->cache->file.name.data);
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "http file cache purge by exact key: %i", rc);
     }
 
     switch (rc) {
@@ -2328,21 +2464,29 @@ ngx_http_cache_purge_all(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
 
 ngx_int_t
 ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
-    ngx_http_cache_purge_loc_conf_t    *cplcf;
-    ngx_int_t                           soft;
+    ngx_http_cache_purge_loc_conf_t     *cplcf;
+    ngx_http_cache_purge_partial_ctx_t  *ctx;
+    ngx_str_t                           *keys;
+    ngx_str_t                            key;
+    ngx_int_t                            soft;
+    ngx_tree_ctx_t                       tree;
+
     ngx_log_debug(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "purge_partial http in %s",
                   cache->path->name.data);
 
-    ngx_str_t           *keys;
-    ngx_str_t           key;
+    if (r->cache->keys.nelts == 0) {
+        return NGX_ERROR;
+    }
 
     /* Only check the first key, and discard '*' at the end */
     keys = r->cache->keys.elts;
     key = keys[0];
+    if (key.len == 0) {
+        return NGX_ERROR;
+    }
     key.len--;
 
-    ngx_http_cache_purge_partial_ctx_t *ctx;
     ctx = ngx_palloc(r->pool, sizeof(ngx_http_cache_purge_partial_ctx_t));
     if (ctx == NULL) {
         return NGX_ERROR;
@@ -2363,7 +2507,6 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     soft = ngx_http_cache_purge_request_mode(r, cplcf->conf->soft);
 
     /* Walk the tree and remove all the files matching key_partial */
-    ngx_tree_ctx_t  tree;
     tree.init_handler = NULL;
     tree.file_handler = soft
                         ? ngx_http_purge_file_cache_soft_partial_file
@@ -2628,7 +2771,7 @@ ngx_http_cache_purge_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
 
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
 
-    ngx_conf_merge_uint_value(conf->resptype, prev->resptype, NGX_REPONSE_TYPE_HTML);
+    ngx_conf_merge_uint_value(conf->resptype, prev->resptype, NGX_RESPONSE_TYPE_HTML);
     ngx_conf_merge_value(conf->cache_tag_watch, prev->cache_tag_watch, 0);
     ngx_conf_merge_str_value(conf->purge_mode_header, prev->purge_mode_header, "");
 
