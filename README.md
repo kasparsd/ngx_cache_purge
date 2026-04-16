@@ -718,7 +718,7 @@ The final request should return `X-Cache-Status: EXPIRED`, confirming that both 
 Cache metrics endpoint:
 
 ```bash
-curl -s 'http://127.0.0.1:8080/_stats' | jq .
+curl -s 'http://127.0.0.1:8080/_stats'
 curl -s 'http://127.0.0.1:8080/_stats?format=prometheus'
 curl -s -H 'Accept: text/plain' 'http://127.0.0.1:8080/_stats'
 ```
