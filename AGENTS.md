@@ -1,6 +1,6 @@
 # Agent instructions
 
-## Verifing changes
+## Verifying changes
 
 - Follow the Development section in [README.md](README.md): use the included development container for development, testing, and manual validation work.
 - Do not run `make` commands on the host machine.
