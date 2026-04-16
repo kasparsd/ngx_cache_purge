@@ -336,9 +336,9 @@ ngx_http_cache_purge_dispatch_special(ngx_http_request_t *r,
 
             if (rc == NGX_OK) {
                 pmcf_m   = ngx_http_get_module_main_conf(r,
-                               ngx_http_cache_purge_module);
+                           ngx_http_cache_purge_module);
                 tag_soft = ngx_http_cache_purge_request_mode(r,
-                               cplcf->conf->soft);
+                           cplcf->conf->soft);
                 if (tag_soft) {
                     NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics,
                                                 purges_tag_soft);
@@ -1048,7 +1048,7 @@ ngx_http_cache_purge_stats_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) 
     }
 
     cplcf->stat_zones = ngx_array_create(cf->pool, 4,
-                                          sizeof(ngx_http_cache_purge_stat_zone_t));
+                                         sizeof(ngx_http_cache_purge_stat_zone_t));
     if (cplcf->stat_zones == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -1109,27 +1109,39 @@ ngx_http_cache_purge_stats_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) 
             caches = fmcf->caches.elts;
             for (i = 0; i < fmcf->caches.nelts; i++) {
                 cache = caches[i];
-                if (cache == NULL || cache->shm_zone == NULL) { continue; }
+                if (cache == NULL || cache->shm_zone == NULL) {
+                    continue;
+                }
                 found = 0;
                 sz = cplcf->stat_zones->elts;
                 for (j = 0; j < cplcf->stat_zones->nelts; j++) {
-                    if (sz[j].cache == cache) { found = 1; break; }
+                    if (sz[j].cache == cache) {
+                        found = 1;
+                        break;
+                    }
                 }
-                if (found) { continue; }
+                if (found) {
+                    continue;
+                }
                 if (nfilters > 0) {
                     found = 0;
                     for (j = 0; j < nfilters; j++) {
                         if (filters[j].len == cache->shm_zone->shm.name.len
-                            && ngx_strncmp(filters[j].data,
-                                           cache->shm_zone->shm.name.data,
-                                           filters[j].len) == 0) {
-                            found = 1; break;
+                                && ngx_strncmp(filters[j].data,
+                                               cache->shm_zone->shm.name.data,
+                                               filters[j].len) == 0) {
+                            found = 1;
+                            break;
                         }
                     }
-                    if (!found) { continue; }
+                    if (!found) {
+                        continue;
+                    }
                 }
                 sz = ngx_array_push(cplcf->stat_zones);
-                if (sz == NULL) { return NGX_CONF_ERROR; }
+                if (sz == NULL) {
+                    return NGX_CONF_ERROR;
+                }
                 sz->name  = cache->shm_zone->shm.name;
                 sz->cache = cache;
             }
@@ -1145,27 +1157,39 @@ ngx_http_cache_purge_stats_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) 
             caches = pmcf_proxy->caches.elts;
             for (i = 0; i < pmcf_proxy->caches.nelts; i++) {
                 cache = caches[i];
-                if (cache == NULL || cache->shm_zone == NULL) { continue; }
+                if (cache == NULL || cache->shm_zone == NULL) {
+                    continue;
+                }
                 found = 0;
                 sz = cplcf->stat_zones->elts;
                 for (j = 0; j < cplcf->stat_zones->nelts; j++) {
-                    if (sz[j].cache == cache) { found = 1; break; }
+                    if (sz[j].cache == cache) {
+                        found = 1;
+                        break;
+                    }
                 }
-                if (found) { continue; }
+                if (found) {
+                    continue;
+                }
                 if (nfilters > 0) {
                     found = 0;
                     for (j = 0; j < nfilters; j++) {
                         if (filters[j].len == cache->shm_zone->shm.name.len
-                            && ngx_strncmp(filters[j].data,
-                                           cache->shm_zone->shm.name.data,
-                                           filters[j].len) == 0) {
-                            found = 1; break;
+                                && ngx_strncmp(filters[j].data,
+                                               cache->shm_zone->shm.name.data,
+                                               filters[j].len) == 0) {
+                            found = 1;
+                            break;
                         }
                     }
-                    if (!found) { continue; }
+                    if (!found) {
+                        continue;
+                    }
                 }
                 sz = ngx_array_push(cplcf->stat_zones);
-                if (sz == NULL) { return NGX_CONF_ERROR; }
+                if (sz == NULL) {
+                    return NGX_CONF_ERROR;
+                }
                 sz->name  = cache->shm_zone->shm.name;
                 sz->cache = cache;
             }
@@ -1181,27 +1205,39 @@ ngx_http_cache_purge_stats_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) 
             caches = smcf->caches.elts;
             for (i = 0; i < smcf->caches.nelts; i++) {
                 cache = caches[i];
-                if (cache == NULL || cache->shm_zone == NULL) { continue; }
+                if (cache == NULL || cache->shm_zone == NULL) {
+                    continue;
+                }
                 found = 0;
                 sz = cplcf->stat_zones->elts;
                 for (j = 0; j < cplcf->stat_zones->nelts; j++) {
-                    if (sz[j].cache == cache) { found = 1; break; }
+                    if (sz[j].cache == cache) {
+                        found = 1;
+                        break;
+                    }
                 }
-                if (found) { continue; }
+                if (found) {
+                    continue;
+                }
                 if (nfilters > 0) {
                     found = 0;
                     for (j = 0; j < nfilters; j++) {
                         if (filters[j].len == cache->shm_zone->shm.name.len
-                            && ngx_strncmp(filters[j].data,
-                                           cache->shm_zone->shm.name.data,
-                                           filters[j].len) == 0) {
-                            found = 1; break;
+                                && ngx_strncmp(filters[j].data,
+                                               cache->shm_zone->shm.name.data,
+                                               filters[j].len) == 0) {
+                            found = 1;
+                            break;
                         }
                     }
-                    if (!found) { continue; }
+                    if (!found) {
+                        continue;
+                    }
                 }
                 sz = ngx_array_push(cplcf->stat_zones);
-                if (sz == NULL) { return NGX_CONF_ERROR; }
+                if (sz == NULL) {
+                    return NGX_CONF_ERROR;
+                }
                 sz->name  = cache->shm_zone->shm.name;
                 sz->cache = cache;
             }
@@ -1217,27 +1253,39 @@ ngx_http_cache_purge_stats_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) 
             caches = umcf->caches.elts;
             for (i = 0; i < umcf->caches.nelts; i++) {
                 cache = caches[i];
-                if (cache == NULL || cache->shm_zone == NULL) { continue; }
+                if (cache == NULL || cache->shm_zone == NULL) {
+                    continue;
+                }
                 found = 0;
                 sz = cplcf->stat_zones->elts;
                 for (j = 0; j < cplcf->stat_zones->nelts; j++) {
-                    if (sz[j].cache == cache) { found = 1; break; }
+                    if (sz[j].cache == cache) {
+                        found = 1;
+                        break;
+                    }
                 }
-                if (found) { continue; }
+                if (found) {
+                    continue;
+                }
                 if (nfilters > 0) {
                     found = 0;
                     for (j = 0; j < nfilters; j++) {
                         if (filters[j].len == cache->shm_zone->shm.name.len
-                            && ngx_strncmp(filters[j].data,
-                                           cache->shm_zone->shm.name.data,
-                                           filters[j].len) == 0) {
-                            found = 1; break;
+                                && ngx_strncmp(filters[j].data,
+                                               cache->shm_zone->shm.name.data,
+                                               filters[j].len) == 0) {
+                            found = 1;
+                            break;
                         }
                     }
-                    if (!found) { continue; }
+                    if (!found) {
+                        continue;
+                    }
                 }
                 sz = ngx_array_push(cplcf->stat_zones);
-                if (sz == NULL) { return NGX_CONF_ERROR; }
+                if (sz == NULL) {
+                    return NGX_CONF_ERROR;
+                }
                 sz->name  = cache->shm_zone->shm.name;
                 sz->cache = cache;
             }
@@ -2001,7 +2049,7 @@ ngx_http_cache_purge_init_process(ngx_cycle_t *cycle) {
     ngx_http_cache_purge_main_conf_t *pmcf;
 
     pmcf = ngx_http_cycle_get_module_main_conf(cycle,
-               ngx_http_cache_purge_module);
+            ngx_http_cache_purge_module);
     if (pmcf == NULL) {
         return NGX_OK;
     }

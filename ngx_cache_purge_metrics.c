@@ -28,9 +28,8 @@ typedef struct {
 
 static void
 ngx_http_cache_purge_walk_rbtree(ngx_rbtree_node_t *node,
-    ngx_rbtree_node_t *sentinel, time_t now,
-    ngx_uint_t *valid, ngx_uint_t *expired, ngx_uint_t *updating)
-{
+                                 ngx_rbtree_node_t *sentinel, time_t now,
+                                 ngx_uint_t *valid, ngx_uint_t *expired, ngx_uint_t *updating) {
     ngx_http_file_cache_node_t *fcn;
 
     if (node == sentinel) {
@@ -38,9 +37,9 @@ ngx_http_cache_purge_walk_rbtree(ngx_rbtree_node_t *node,
     }
 
     ngx_http_cache_purge_walk_rbtree(node->left,  sentinel, now,
-                                      valid, expired, updating);
+                                     valid, expired, updating);
     ngx_http_cache_purge_walk_rbtree(node->right, sentinel, now,
-                                      valid, expired, updating);
+                                     valid, expired, updating);
 
     fcn = (ngx_http_file_cache_node_t *) node;
 
@@ -68,9 +67,8 @@ ngx_http_cache_purge_walk_rbtree(ngx_rbtree_node_t *node,
 
 static void
 ngx_http_cache_purge_snapshot_zone(ngx_http_cache_purge_stat_zone_t *sz,
-    ngx_http_cache_purge_main_conf_t *pmcf,
-    ngx_http_cache_purge_zone_snapshot_t *snap)
-{
+                                   ngx_http_cache_purge_main_conf_t *pmcf,
+                                   ngx_http_cache_purge_zone_snapshot_t *snap) {
     ngx_http_file_cache_t *cache;
 #if (NGX_LINUX)
     ngx_http_cache_tag_queue_ctx_t *qctx;
@@ -128,8 +126,7 @@ ngx_http_cache_purge_snapshot_zone(ngx_http_cache_purge_stat_zone_t *sz,
 /* ── Atomic counter read ── */
 
 static ngx_inline ngx_atomic_uint_t
-ngx_cache_purge_metrics_read(ngx_atomic_t *p)
-{
+ngx_cache_purge_metrics_read(ngx_atomic_t *p) {
     return (ngx_atomic_uint_t) ngx_atomic_fetch_add(p, 0);
 }
 
@@ -137,8 +134,7 @@ ngx_cache_purge_metrics_read(ngx_atomic_t *p)
 /* ── Format negotiation ── */
 
 static ngx_int_t
-ngx_http_cache_purge_negotiate_format(ngx_http_request_t *r)
-{
+ngx_http_cache_purge_negotiate_format(ngx_http_request_t *r) {
     ngx_str_t        fmt;
     ngx_list_part_t *part;
     ngx_table_elt_t *h;
@@ -149,8 +145,7 @@ ngx_http_cache_purge_negotiate_format(ngx_http_request_t *r)
     /* ?format=json|prometheus takes precedence */
     if (ngx_http_arg(r, (u_char *) "format", 6, &fmt) == NGX_OK) {
         if (fmt.len == 10
-                && ngx_strncasecmp(fmt.data, (u_char *) "prometheus", 10) == 0)
-        {
+                && ngx_strncasecmp(fmt.data, (u_char *) "prometheus", 10) == 0) {
             return NGX_CACHE_PURGE_METRICS_FORMAT_PROMETHEUS;
         }
         return NGX_CACHE_PURGE_METRICS_FORMAT_JSON;
@@ -176,15 +171,13 @@ ngx_http_cache_purge_negotiate_format(ngx_http_request_t *r)
         }
 
         if (ngx_strncasecmp(h[i].key.data, (u_char *) accept_hdr,
-                            sizeof(accept_hdr) - 1) != 0)
-        {
+                            sizeof(accept_hdr) - 1) != 0) {
             continue;
         }
 
         if (ngx_strnstr(h[i].value.data, "text/plain", h[i].value.len) != NULL
                 || ngx_strnstr(h[i].value.data, "application/openmetrics-text",
-                               h[i].value.len) != NULL)
-        {
+                               h[i].value.len) != NULL) {
             return NGX_CACHE_PURGE_METRICS_FORMAT_PROMETHEUS;
         }
 
@@ -198,8 +191,7 @@ ngx_http_cache_purge_negotiate_format(ngx_http_request_t *r)
 /* ── Backend name helper ── */
 
 static const char *
-ngx_http_cache_purge_backend_str(ngx_uint_t backend)
-{
+ngx_http_cache_purge_backend_str(ngx_uint_t backend) {
     switch (backend) {
     case NGX_HTTP_CACHE_TAG_BACKEND_SQLITE:
         return "sqlite";
@@ -215,31 +207,30 @@ ngx_http_cache_purge_backend_str(ngx_uint_t backend)
 
 static u_char *
 ngx_http_cache_purge_write_json(u_char *p, u_char *last,
-    ngx_uint_t nzones, ngx_http_cache_purge_zone_snapshot_t *snaps,
-    ngx_http_cache_purge_metrics_shctx_t *m)
-{
+                                ngx_uint_t nzones, ngx_http_cache_purge_zone_snapshot_t *snaps,
+                                ngx_http_cache_purge_metrics_shctx_t *m) {
     ngx_uint_t  i;
     ngx_http_cache_purge_zone_snapshot_t *s;
 
     p = ngx_slprintf(p, last,
-        "{"
-        "\"version\":1,"
-        "\"timestamp\":%T,"
-        "\"purges\":{"
-          "\"exact\":{\"hard\":%uA,\"soft\":%uA},"
-          "\"wildcard\":{\"hard\":%uA,\"soft\":%uA},"
-          "\"tag\":{\"hard\":%uA,\"soft\":%uA},"
-          "\"all\":{\"hard\":%uA,\"soft\":%uA}"
-        "},",
-        ngx_time(),
-        m ? ngx_cache_purge_metrics_read(&m->purges_exact_hard)    : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_exact_soft)    : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_hard) : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_soft) : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_tag_hard)      : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_tag_soft)      : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_all_hard)      : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_all_soft)      : (ngx_atomic_uint_t)0);
+                     "{"
+                     "\"version\":1,"
+                     "\"timestamp\":%T,"
+                     "\"purges\":{"
+                     "\"exact\":{\"hard\":%uA,\"soft\":%uA},"
+                     "\"wildcard\":{\"hard\":%uA,\"soft\":%uA},"
+                     "\"tag\":{\"hard\":%uA,\"soft\":%uA},"
+                     "\"all\":{\"hard\":%uA,\"soft\":%uA}"
+                     "},",
+                     ngx_time(),
+                     m ? ngx_cache_purge_metrics_read(&m->purges_exact_hard)    : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_exact_soft)    : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_hard) : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_soft) : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_tag_hard)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_tag_soft)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_all_hard)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_all_soft)      : (ngx_atomic_uint_t)0);
 
     p = ngx_slprintf(p, last, "\"zones\":{");
 
@@ -247,46 +238,50 @@ ngx_http_cache_purge_write_json(u_char *p, u_char *last,
         s = &snaps[i];
 
         if (i > 0) {
-            if (p < last) { *p++ = ','; }
+            if (p < last) {
+                *p++ = ',';
+            }
         }
 
         p = ngx_slprintf(p, last,
-            "\"%V\":{"
-              "\"size\":%O,"
-              "\"max_size\":%O,"
-              "\"cold\":%s,"
-              "\"entries\":{"
-                "\"total\":%ui,"
-                "\"valid\":%ui,"
-                "\"expired\":%ui,"
-                "\"updating\":%ui"
-              "}",
-            &s->name,
-            s->size,
-            s->max_size,
-            s->cold ? "true" : "false",
-            s->entries_valid + s->entries_expired + s->entries_updating,
-            s->entries_valid,
-            s->entries_expired,
-            s->entries_updating);
+                         "\"%V\":{"
+                         "\"size\":%O,"
+                         "\"max_size\":%O,"
+                         "\"cold\":%s,"
+                         "\"entries\":{"
+                         "\"total\":%ui,"
+                         "\"valid\":%ui,"
+                         "\"expired\":%ui,"
+                         "\"updating\":%ui"
+                         "}",
+                         &s->name,
+                         s->size,
+                         s->max_size,
+                         s->cold ? "true" : "false",
+                         s->entries_valid + s->entries_expired + s->entries_updating,
+                         s->entries_valid,
+                         s->entries_expired,
+                         s->entries_updating);
 
         if (s->has_tag_index) {
             p = ngx_slprintf(p, last,
-                ",\"tag_index\":{"
-                  "\"backend\":\"%s\","
-                  "\"queue\":{"
-                    "\"size\":%ui,"
-                    "\"capacity\":%ui,"
-                    "\"dropped\":%ui"
-                  "}"
-                "}",
-                ngx_http_cache_purge_backend_str(s->tag_backend),
-                s->queue_size,
-                s->queue_capacity,
-                s->queue_dropped);
+                             ",\"tag_index\":{"
+                             "\"backend\":\"%s\","
+                             "\"queue\":{"
+                             "\"size\":%ui,"
+                             "\"capacity\":%ui,"
+                             "\"dropped\":%ui"
+                             "}"
+                             "}",
+                             ngx_http_cache_purge_backend_str(s->tag_backend),
+                             s->queue_size,
+                             s->queue_capacity,
+                             s->queue_dropped);
         }
 
-        if (p < last) { *p++ = '}'; }
+        if (p < last) {
+            *p++ = '}';
+        }
     }
 
     p = ngx_slprintf(p, last, "}}");
@@ -299,84 +294,83 @@ ngx_http_cache_purge_write_json(u_char *p, u_char *last,
 
 static u_char *
 ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
-    ngx_uint_t nzones, ngx_http_cache_purge_zone_snapshot_t *snaps,
-    ngx_http_cache_purge_metrics_shctx_t *m)
-{
+                                      ngx_uint_t nzones, ngx_http_cache_purge_zone_snapshot_t *snaps,
+                                      ngx_http_cache_purge_metrics_shctx_t *m) {
     ngx_uint_t  i;
     ngx_http_cache_purge_zone_snapshot_t *s;
 
     /* Global purge counters */
     p = ngx_slprintf(p, last,
-        "# HELP nginx_cache_purge_purges_total"
-            " Total cache purge operations\n"
-        "# TYPE nginx_cache_purge_purges_total counter\n"
-        "nginx_cache_purge_purges_total{type=\"exact\",mode=\"hard\"} %uA\n"
-        "nginx_cache_purge_purges_total{type=\"exact\",mode=\"soft\"} %uA\n"
-        "nginx_cache_purge_purges_total{type=\"wildcard\",mode=\"hard\"} %uA\n"
-        "nginx_cache_purge_purges_total{type=\"wildcard\",mode=\"soft\"} %uA\n"
-        "nginx_cache_purge_purges_total{type=\"tag\",mode=\"hard\"} %uA\n"
-        "nginx_cache_purge_purges_total{type=\"tag\",mode=\"soft\"} %uA\n"
-        "nginx_cache_purge_purges_total{type=\"all\",mode=\"hard\"} %uA\n"
-        "nginx_cache_purge_purges_total{type=\"all\",mode=\"soft\"} %uA\n",
-        m ? ngx_cache_purge_metrics_read(&m->purges_exact_hard)    : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_exact_soft)    : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_hard) : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_soft) : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_tag_hard)      : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_tag_soft)      : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_all_hard)      : (ngx_atomic_uint_t)0,
-        m ? ngx_cache_purge_metrics_read(&m->purges_all_soft)      : (ngx_atomic_uint_t)0);
+                     "# HELP nginx_cache_purge_purges_total"
+                     " Total cache purge operations\n"
+                     "# TYPE nginx_cache_purge_purges_total counter\n"
+                     "nginx_cache_purge_purges_total{type=\"exact\",mode=\"hard\"} %uA\n"
+                     "nginx_cache_purge_purges_total{type=\"exact\",mode=\"soft\"} %uA\n"
+                     "nginx_cache_purge_purges_total{type=\"wildcard\",mode=\"hard\"} %uA\n"
+                     "nginx_cache_purge_purges_total{type=\"wildcard\",mode=\"soft\"} %uA\n"
+                     "nginx_cache_purge_purges_total{type=\"tag\",mode=\"hard\"} %uA\n"
+                     "nginx_cache_purge_purges_total{type=\"tag\",mode=\"soft\"} %uA\n"
+                     "nginx_cache_purge_purges_total{type=\"all\",mode=\"hard\"} %uA\n"
+                     "nginx_cache_purge_purges_total{type=\"all\",mode=\"soft\"} %uA\n",
+                     m ? ngx_cache_purge_metrics_read(&m->purges_exact_hard)    : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_exact_soft)    : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_hard) : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_soft) : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_tag_hard)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_tag_soft)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_all_hard)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_purge_metrics_read(&m->purges_all_soft)      : (ngx_atomic_uint_t)0);
 
     /* Zone size */
     p = ngx_slprintf(p, last,
-        "# HELP nginx_cache_purge_zone_size_bytes"
-            " Current cache zone size in bytes\n"
-        "# TYPE nginx_cache_purge_zone_size_bytes gauge\n");
+                     "# HELP nginx_cache_purge_zone_size_bytes"
+                     " Current cache zone size in bytes\n"
+                     "# TYPE nginx_cache_purge_zone_size_bytes gauge\n");
     for (i = 0; i < nzones; i++) {
         s = &snaps[i];
         p = ngx_slprintf(p, last,
-            "nginx_cache_purge_zone_size_bytes{zone=\"%V\"} %O\n",
-            &s->name, s->size);
+                         "nginx_cache_purge_zone_size_bytes{zone=\"%V\"} %O\n",
+                         &s->name, s->size);
     }
 
     /* Zone max_size */
     p = ngx_slprintf(p, last,
-        "# HELP nginx_cache_purge_zone_max_size_bytes"
-            " Configured maximum cache zone size in bytes\n"
-        "# TYPE nginx_cache_purge_zone_max_size_bytes gauge\n");
+                     "# HELP nginx_cache_purge_zone_max_size_bytes"
+                     " Configured maximum cache zone size in bytes\n"
+                     "# TYPE nginx_cache_purge_zone_max_size_bytes gauge\n");
     for (i = 0; i < nzones; i++) {
         s = &snaps[i];
         p = ngx_slprintf(p, last,
-            "nginx_cache_purge_zone_max_size_bytes{zone=\"%V\"} %O\n",
-            &s->name, s->max_size);
+                         "nginx_cache_purge_zone_max_size_bytes{zone=\"%V\"} %O\n",
+                         &s->name, s->max_size);
     }
 
     /* Zone cold */
     p = ngx_slprintf(p, last,
-        "# HELP nginx_cache_purge_zone_cold"
-            " 1 if the cache zone loader has not finished, 0 if warm\n"
-        "# TYPE nginx_cache_purge_zone_cold gauge\n");
+                     "# HELP nginx_cache_purge_zone_cold"
+                     " 1 if the cache zone loader has not finished, 0 if warm\n"
+                     "# TYPE nginx_cache_purge_zone_cold gauge\n");
     for (i = 0; i < nzones; i++) {
         s = &snaps[i];
         p = ngx_slprintf(p, last,
-            "nginx_cache_purge_zone_cold{zone=\"%V\"} %ui\n",
-            &s->name, s->cold);
+                         "nginx_cache_purge_zone_cold{zone=\"%V\"} %ui\n",
+                         &s->name, s->cold);
     }
 
     /* Zone entries */
     p = ngx_slprintf(p, last,
-        "# HELP nginx_cache_purge_zone_entries"
-            " Number of entries in the cache zone by state\n"
-        "# TYPE nginx_cache_purge_zone_entries gauge\n");
+                     "# HELP nginx_cache_purge_zone_entries"
+                     " Number of entries in the cache zone by state\n"
+                     "# TYPE nginx_cache_purge_zone_entries gauge\n");
     for (i = 0; i < nzones; i++) {
         s = &snaps[i];
         p = ngx_slprintf(p, last,
-            "nginx_cache_purge_zone_entries{zone=\"%V\",state=\"valid\"} %ui\n"
-            "nginx_cache_purge_zone_entries{zone=\"%V\",state=\"expired\"} %ui\n"
-            "nginx_cache_purge_zone_entries{zone=\"%V\",state=\"updating\"} %ui\n",
-            &s->name, s->entries_valid,
-            &s->name, s->entries_expired,
-            &s->name, s->entries_updating);
+                         "nginx_cache_purge_zone_entries{zone=\"%V\",state=\"valid\"} %ui\n"
+                         "nginx_cache_purge_zone_entries{zone=\"%V\",state=\"expired\"} %ui\n"
+                         "nginx_cache_purge_zone_entries{zone=\"%V\",state=\"updating\"} %ui\n",
+                         &s->name, s->entries_valid,
+                         &s->name, s->entries_expired,
+                         &s->name, s->entries_updating);
     }
 
     /* Tag index metrics */
@@ -388,15 +382,15 @@ ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
 
         if (i == 0 || !snaps[i - 1].has_tag_index) {
             p = ngx_slprintf(p, last,
-                "# HELP nginx_cache_purge_tag_index_info"
-                    " Static metadata about the configured tag index backend (always 1)\n"
-                "# TYPE nginx_cache_purge_tag_index_info gauge\n");
+                             "# HELP nginx_cache_purge_tag_index_info"
+                             " Static metadata about the configured tag index backend (always 1)\n"
+                             "# TYPE nginx_cache_purge_tag_index_info gauge\n");
         }
         p = ngx_slprintf(p, last,
-            "nginx_cache_purge_tag_index_info"
-                "{zone=\"%V\",backend=\"%s\"} 1\n",
-            &s->name,
-            ngx_http_cache_purge_backend_str(s->tag_backend));
+                         "nginx_cache_purge_tag_index_info"
+                         "{zone=\"%V\",backend=\"%s\"} 1\n",
+                         &s->name,
+                         ngx_http_cache_purge_backend_str(s->tag_backend));
     }
 
     for (i = 0; i < nzones; i++) {
@@ -407,13 +401,13 @@ ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
 
         if (i == 0 || !snaps[i - 1].has_tag_index) {
             p = ngx_slprintf(p, last,
-                "# HELP nginx_cache_purge_tag_queue_size"
-                    " Current number of pending tag index operations in the queue\n"
-                "# TYPE nginx_cache_purge_tag_queue_size gauge\n");
+                             "# HELP nginx_cache_purge_tag_queue_size"
+                             " Current number of pending tag index operations in the queue\n"
+                             "# TYPE nginx_cache_purge_tag_queue_size gauge\n");
         }
         p = ngx_slprintf(p, last,
-            "nginx_cache_purge_tag_queue_size{zone=\"%V\"} %ui\n",
-            &s->name, s->queue_size);
+                         "nginx_cache_purge_tag_queue_size{zone=\"%V\"} %ui\n",
+                         &s->name, s->queue_size);
     }
 
     for (i = 0; i < nzones; i++) {
@@ -424,13 +418,13 @@ ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
 
         if (i == 0 || !snaps[i - 1].has_tag_index) {
             p = ngx_slprintf(p, last,
-                "# HELP nginx_cache_purge_tag_queue_capacity"
-                    " Maximum capacity of the tag index operation queue\n"
-                "# TYPE nginx_cache_purge_tag_queue_capacity gauge\n");
+                             "# HELP nginx_cache_purge_tag_queue_capacity"
+                             " Maximum capacity of the tag index operation queue\n"
+                             "# TYPE nginx_cache_purge_tag_queue_capacity gauge\n");
         }
         p = ngx_slprintf(p, last,
-            "nginx_cache_purge_tag_queue_capacity{zone=\"%V\"} %ui\n",
-            &s->name, s->queue_capacity);
+                         "nginx_cache_purge_tag_queue_capacity{zone=\"%V\"} %ui\n",
+                         &s->name, s->queue_capacity);
     }
 
     for (i = 0; i < nzones; i++) {
@@ -441,13 +435,13 @@ ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
 
         if (i == 0 || !snaps[i - 1].has_tag_index) {
             p = ngx_slprintf(p, last,
-                "# HELP nginx_cache_purge_tag_queue_dropped_total"
-                    " Tag index operations dropped due to queue overflow\n"
-                "# TYPE nginx_cache_purge_tag_queue_dropped_total counter\n");
+                             "# HELP nginx_cache_purge_tag_queue_dropped_total"
+                             " Tag index operations dropped due to queue overflow\n"
+                             "# TYPE nginx_cache_purge_tag_queue_dropped_total counter\n");
         }
         p = ngx_slprintf(p, last,
-            "nginx_cache_purge_tag_queue_dropped_total{zone=\"%V\"} %ui\n",
-            &s->name, s->queue_dropped);
+                         "nginx_cache_purge_tag_queue_dropped_total{zone=\"%V\"} %ui\n",
+                         &s->name, s->queue_dropped);
     }
 
     return p;
@@ -457,8 +451,7 @@ ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
 /* ── Shared-memory zone init callback ── */
 
 ngx_int_t
-ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone, void *data)
-{
+ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
     ngx_http_cache_purge_metrics_shctx_t *old;
     ngx_slab_pool_t                      *shpool;
 
@@ -472,7 +465,7 @@ ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone, void *data)
     }
 
     shm_zone->data = ngx_slab_alloc(shpool,
-                                     sizeof(ngx_http_cache_purge_metrics_shctx_t));
+                                    sizeof(ngx_http_cache_purge_metrics_shctx_t));
     if (shm_zone->data == NULL) {
         ngx_log_error(NGX_LOG_EMERG, shm_zone->shm.log, 0,
                       "cache_purge metrics: out of shared memory");
@@ -480,7 +473,7 @@ ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone, void *data)
     }
 
     ngx_memzero(shm_zone->data,
-                 sizeof(ngx_http_cache_purge_metrics_shctx_t));
+                sizeof(ngx_http_cache_purge_metrics_shctx_t));
 
     return NGX_OK;
 }
@@ -490,8 +483,7 @@ ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone, void *data)
 
 ngx_int_t
 ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
-    ngx_http_cache_purge_main_conf_t *pmcf)
-{
+                                       ngx_http_cache_purge_main_conf_t *pmcf) {
     static ngx_str_t  zone_name = ngx_string("ngx_cache_purge_metrics");
     ngx_shm_zone_t   *zone;
 
@@ -500,8 +492,8 @@ ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
     }
 
     zone = ngx_shared_memory_add(cf, &zone_name,
-                                  4 * ngx_pagesize,
-                                  &ngx_http_cache_purge_module);
+                                 4 * ngx_pagesize,
+                                 &ngx_http_cache_purge_module);
     if (zone == NULL) {
         return NGX_ERROR;
     }
@@ -516,8 +508,7 @@ ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
 /* ── HTTP handler ── */
 
 ngx_int_t
-ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r)
-{
+ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r) {
     ngx_http_cache_purge_main_conf_t      *pmcf;
     ngx_http_cache_purge_loc_conf_t       *cplcf;
     ngx_http_cache_purge_stat_zone_t      *stat_zones;
@@ -551,7 +542,7 @@ ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r)
     nzones     = cplcf->stat_zones->nelts;
 
     snaps = ngx_palloc(r->pool,
-                        nzones * sizeof(ngx_http_cache_purge_zone_snapshot_t));
+                       nzones * sizeof(ngx_http_cache_purge_zone_snapshot_t));
     if (snaps == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
