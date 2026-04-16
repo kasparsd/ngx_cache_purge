@@ -404,6 +404,13 @@ make test
 
 For manual validation inside the development container, the repository includes an example nginx configuration at `examples/docker-validation.conf`.
 
+It defaults to SQLite for tag indexing and includes a commented Redis alternative:
+
+```nginx
+cache_tag_index  sqlite /tmp/ngx_cache_purge_demo_tags.sqlite;
+# cache_tag_index  redis redis:6379 db=10;
+```
+
 It provides separate locations for these behaviors:
 
 - exact-key soft purge (`/soft`)
@@ -412,12 +419,26 @@ It provides separate locations for these behaviors:
 - `purge_all` soft purge (`/purge_all`)
 - separate-location `zone key soft` syntax (`/separate` and `/purge_separate/...`)
 - cache-tag soft purge by `Surrogate-Key` or `Cache-Tag` (`/tagged/...`)
+- watched-location plain `PURGE` fallback (`/tagged/plain`)
+- custom tag headers with an isolated cache zone (`/tagged_custom`)
 
 Start it inside the container after building nginx:
 
 ```bash
 make shell
 make nginx-build
+rm -rf /tmp/ngx_cache_purge_demo_* /tmp/ngx_cache_purge_temp /tmp/ngx_cache_purge_demo_tags.sqlite
+mkdir -p /tmp/ngx_cache_purge_temp /tmp/logs
+/opt/nginx/sbin/nginx -p /tmp -c /workspace/examples/docker-validation.conf
+```
+
+For Redis-backed validation, start the sidecar first, switch `cache_tag_index` in the example config to the commented Redis line, and clear the selected database before starting nginx:
+
+```bash
+docker compose up -d redis
+make shell
+make nginx-build
+redis-cli -h redis -p 6379 -n 10 FLUSHDB
 rm -rf /tmp/ngx_cache_purge_demo_* /tmp/ngx_cache_purge_temp /tmp/ngx_cache_purge_demo_tags.sqlite
 mkdir -p /tmp/ngx_cache_purge_temp /tmp/logs
 /opt/nginx/sbin/nginx -p /tmp -c /workspace/examples/docker-validation.conf
@@ -508,6 +529,38 @@ curl -i 'http://127.0.0.1:8080/tagged/c'
 ```
 
 The two `shared` entries should come back as `EXPIRED`, while `/tagged/c` should remain `HIT`.
+
+Redis-specific validation flows after switching the example config to `cache_tag_index redis redis:6379 db=10`:
+
+Watched-location plain `PURGE` fallback:
+
+```bash
+curl -i 'http://127.0.0.1:8080/tagged/plain'
+curl -i -X PURGE 'http://127.0.0.1:8080/tagged/plain'
+curl -i 'http://127.0.0.1:8080/tagged/plain'
+```
+
+The final request should return `X-Cache-Status: EXPIRED`, showing that a watched location still falls back to key-based soft purge when no tag headers are supplied.
+
+Redis hard tag purge via `cache_purge_mode_header` override:
+
+```bash
+curl -i 'http://127.0.0.1:8080/tagged/a?t=redis-hard'
+curl -i -X PURGE -H 'Cache-Tag: alpha' -H 'X-Purge-Mode: hard' 'http://127.0.0.1:8080/tagged/a?t=redis-hard'
+curl -i 'http://127.0.0.1:8080/tagged/a?t=redis-hard'
+```
+
+The final request should return `X-Cache-Status: MISS`, confirming that the Redis-backed tag purge deleted the cache file instead of expiring it in place.
+
+Redis custom `cache_tag_headers` flow:
+
+```bash
+curl -i 'http://127.0.0.1:8080/tagged_custom'
+curl -i -X PURGE -H 'Custom-Group: custom-alpha' 'http://127.0.0.1:8080/tagged_custom'
+curl -i 'http://127.0.0.1:8080/tagged_custom'
+```
+
+The final request should return `X-Cache-Status: EXPIRED`, confirming that both cached-response indexing and purge matching use `Edge-Tag` and `Custom-Group` for that isolated Redis-backed zone.
 
 Stop the validation nginx instance with:
 
