@@ -191,6 +191,7 @@ close $summary_fh or die "close(summary.txt): $!";
 
 update_latest_symlink($options{out_dir}, $timestamp);
 print $table;
+print_summary_json($summary);
 
 sub run_scenario {
     my ($scenario, $duration_s, $run_dir, $stats_endpoint) = @_;
@@ -427,6 +428,13 @@ sub update_latest_symlink {
     my $latest = "$out_dir/latest";
     unlink $latest if -l $latest || -e $latest;
     symlink($timestamp, $latest) or die "symlink($latest): $!";
+}
+
+sub print_summary_json {
+    my ($summary) = @_;
+
+    print "\nSummary JSON\n";
+    print JSON::PP->new->ascii->canonical->pretty->encode($summary);
 }
 
 sub start_redis {
