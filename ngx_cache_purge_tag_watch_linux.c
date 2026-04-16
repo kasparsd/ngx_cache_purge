@@ -5,7 +5,10 @@
 static ngx_http_cache_tag_watch_runtime_t ngx_http_cache_tag_watch_runtime;
 static ngx_http_cache_tag_queue_ctx_t    *ngx_http_cache_tag_queue_ctx;
 
+static void ngx_http_cache_tag_inotify_handler(ngx_event_t *ev);
 static void ngx_http_cache_tag_timer_handler(ngx_event_t *ev);
+static ngx_int_t ngx_http_cache_tag_read_inotify(ngx_pool_t *pool,
+        ngx_array_t *pending_ops, ngx_cycle_t *cycle);
 static void ngx_http_cache_tag_queue_log_stats(ngx_log_t *log, ngx_uint_t level,
         const char *message);
 static ngx_int_t ngx_http_cache_tag_queue_init_zone(ngx_shm_zone_t *shm_zone,
@@ -497,8 +500,11 @@ ngx_http_cache_tag_add_watch_recursive(ngx_http_cache_tag_store_t *store,
     return NGX_OK;
 }
 
+/* Read all pending inotify events into pending_ops.  pool is used for path
+ * string allocation.  Returns NGX_OK even if no events were available. */
 static ngx_int_t
-ngx_http_cache_tag_process_events(ngx_cycle_t *cycle) {
+ngx_http_cache_tag_read_inotify(ngx_pool_t *pool, ngx_array_t *pending_ops,
+                                ngx_cycle_t *cycle) {
     u_char                      buf[8192];
     ssize_t                     n;
     size_t                      offset;
@@ -506,18 +512,9 @@ ngx_http_cache_tag_process_events(ngx_cycle_t *cycle) {
     ngx_http_cache_tag_watch_t *watch;
     ngx_http_cache_tag_zone_t   zone;
     ngx_str_t                   path;
-    ngx_pool_t                 *pool;
-    ngx_array_t                *pending_ops;
 
-    pool = ngx_create_pool(4096, cycle->log);
-    if (pool == NULL) {
-        return NGX_ERROR;
-    }
-
-    pending_ops = ngx_array_create(pool, 8, sizeof(ngx_http_cache_tag_pending_op_t));
-    if (pending_ops == NULL) {
-        ngx_destroy_pool(pool);
-        return NGX_ERROR;
+    if (ngx_http_cache_tag_watch_runtime.inotify_conn == NULL) {
+        return NGX_OK;
     }
 
     for (;;) {
@@ -527,8 +524,8 @@ ngx_http_cache_tag_process_events(ngx_cycle_t *cycle) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
             }
-
-            ngx_destroy_pool(pool);
+            ngx_log_error(NGX_LOG_ERR, cycle->log, ngx_errno,
+                          "cache_tag inotify read failed");
             return NGX_ERROR;
         }
 
@@ -559,10 +556,10 @@ ngx_http_cache_tag_process_events(ngx_cycle_t *cycle) {
                             }
 
                             if (ngx_http_cache_tag_add_watch_recursive(
-                                        ngx_http_cache_tag_store_writer(), &zone, &path,
-                                        cycle, NGX_HTTP_CACHE_TAG_INDEX_PENDING,
+                                        ngx_http_cache_tag_store_writer(), &zone,
+                                        &path, cycle,
+                                        NGX_HTTP_CACHE_TAG_INDEX_PENDING,
                                         pending_ops, 0) == NGX_ERROR) {
-                                ngx_destroy_pool(pool);
                                 return NGX_ERROR;
                             }
                         }
@@ -571,14 +568,12 @@ ngx_http_cache_tag_process_events(ngx_cycle_t *cycle) {
                         if (ngx_http_cache_tag_pending_op_set(pool, pending_ops,
                                                               &watch->zone_name, watch->cache, &path,
                                                               NGX_HTTP_CACHE_TAG_OP_REPLACE) != NGX_OK) {
-                            ngx_destroy_pool(pool);
                             return NGX_ERROR;
                         }
                     } else if (event->mask & (IN_DELETE|IN_MOVED_FROM)) {
                         if (ngx_http_cache_tag_pending_op_set(pool, pending_ops,
                                                               &watch->zone_name, watch->cache, &path,
                                                               NGX_HTTP_CACHE_TAG_OP_DELETE) != NGX_OK) {
-                            ngx_destroy_pool(pool);
                             return NGX_ERROR;
                         }
                     }
@@ -589,37 +584,121 @@ ngx_http_cache_tag_process_events(ngx_cycle_t *cycle) {
         }
     }
 
-    if (ngx_http_cache_tag_queue_drain(pool, pending_ops, cycle->log) != NGX_OK) {
-        ngx_destroy_pool(pool);
-        return NGX_ERROR;
-    }
-
-    if (pending_ops->nelts > 0
-            && ngx_http_cache_tag_apply_pending_ops(
-                ngx_http_cache_tag_store_writer(), pending_ops, cycle->log)
-            != NGX_OK) {
-        ngx_destroy_pool(pool);
-        return NGX_ERROR;
-    }
-
-    ngx_destroy_pool(pool);
-
     return NGX_OK;
 }
 
+/* Inotify read event handler: fires immediately when the kernel has events.
+ * Reads all available events into the persistent runtime pending_ops; does
+ * NOT write to the backing store (no blocking I/O in this handler).
+ * The timer handler applies pending_ops to the store every 250 ms. */
 static void
-ngx_http_cache_tag_timer_handler(ngx_event_t *ev) {
+ngx_http_cache_tag_inotify_handler(ngx_event_t *ev) {
+    ngx_cycle_t  *cycle = ngx_http_cache_tag_watch_runtime.cycle;
+
     if (ngx_exiting || ngx_quit || ngx_terminate) {
         return;
     }
 
-    if (ngx_http_cache_tag_process_events(ngx_http_cache_tag_watch_runtime.cycle)
-            != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, ngx_http_cache_tag_watch_runtime.cycle->log, 0,
-                      "cache_tag watcher processing failed");
+    if (ngx_http_cache_tag_read_inotify(
+                ngx_http_cache_tag_watch_runtime.pending_pool,
+                ngx_http_cache_tag_watch_runtime.pending_ops,
+                cycle) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                      "cache_tag inotify handler failed");
+    }
+}
+
+/* Timer handler: drain the inter-worker shm queue, apply all accumulated
+ * pending ops to the backing store, then reset the pending_pool so memory
+ * from the previous batch is reclaimed. */
+static void
+ngx_http_cache_tag_timer_handler(ngx_event_t *ev) {
+    ngx_cycle_t  *cycle;
+    ngx_pool_t   *new_pool;
+
+    if (ngx_exiting || ngx_quit || ngx_terminate) {
+        return;
+    }
+
+    cycle = ngx_http_cache_tag_watch_runtime.cycle;
+
+    if (ngx_http_cache_tag_queue_drain(
+                ngx_http_cache_tag_watch_runtime.pending_pool,
+                ngx_http_cache_tag_watch_runtime.pending_ops,
+                cycle->log) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                      "cache_tag queue drain failed");
+    }
+
+    if (ngx_http_cache_tag_watch_runtime.pending_ops->nelts > 0
+            && ngx_http_cache_tag_apply_pending_ops(
+                ngx_http_cache_tag_store_writer(),
+                ngx_http_cache_tag_watch_runtime.pending_ops,
+                cycle->log) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                      "cache_tag apply pending ops failed");
+    }
+
+    /* Reset the pool so path/zone-name strings from this batch are freed.
+     * Create the new pool before destroying the old one so that a single
+     * allocation failure does not lose the pending_ops pointer. */
+    new_pool = ngx_create_pool(4096, cycle->log);
+    if (new_pool != NULL) {
+        ngx_destroy_pool(ngx_http_cache_tag_watch_runtime.pending_pool);
+        ngx_http_cache_tag_watch_runtime.pending_pool = new_pool;
+        ngx_http_cache_tag_watch_runtime.pending_ops =
+            ngx_array_create(new_pool, 8,
+                             sizeof(ngx_http_cache_tag_pending_op_t));
+        if (ngx_http_cache_tag_watch_runtime.pending_ops == NULL) {
+            ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                          "cache_tag failed to recreate pending_ops array");
+        }
     }
 
     ngx_add_timer(ev, 250);
+}
+
+/* One-shot flush used by flush_pending() and shutdown: reads any remaining
+ * inotify events, drains the shm queue, and applies all ops to the store.
+ * Uses the runtime pending_pool/ops so nothing accumulated by the event
+ * handler is lost. */
+static ngx_int_t
+ngx_http_cache_tag_process_events(ngx_cycle_t *cycle) {
+    ngx_pool_t  *new_pool;
+
+    if (ngx_http_cache_tag_read_inotify(
+                ngx_http_cache_tag_watch_runtime.pending_pool,
+                ngx_http_cache_tag_watch_runtime.pending_ops,
+                cycle) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    if (ngx_http_cache_tag_queue_drain(
+                ngx_http_cache_tag_watch_runtime.pending_pool,
+                ngx_http_cache_tag_watch_runtime.pending_ops,
+                cycle->log) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    if (ngx_http_cache_tag_watch_runtime.pending_ops->nelts > 0
+            && ngx_http_cache_tag_apply_pending_ops(
+                ngx_http_cache_tag_store_writer(),
+                ngx_http_cache_tag_watch_runtime.pending_ops,
+                cycle->log) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    /* Reset for the next batch. */
+    new_pool = ngx_create_pool(4096, cycle->log);
+    if (new_pool != NULL) {
+        ngx_destroy_pool(ngx_http_cache_tag_watch_runtime.pending_pool);
+        ngx_http_cache_tag_watch_runtime.pending_pool = new_pool;
+        ngx_http_cache_tag_watch_runtime.pending_ops =
+            ngx_array_create(new_pool, 8,
+                             sizeof(ngx_http_cache_tag_pending_op_t));
+    }
+
+    return NGX_OK;
 }
 
 ngx_int_t
@@ -677,6 +756,22 @@ ngx_http_cache_tag_init_runtime(ngx_cycle_t *cycle,
         ngx_http_cache_tag_watch_runtime.inotify_conn->log = cycle->log;
     }
 
+    /* Persistent pool and op-list for the event-driven inotify read path.
+     * The inotify_handler appends to these; the timer handler applies and
+     * resets them. */
+    ngx_http_cache_tag_watch_runtime.pending_pool =
+        ngx_create_pool(4096, cycle->log);
+    if (ngx_http_cache_tag_watch_runtime.pending_pool == NULL) {
+        return NGX_ERROR;
+    }
+
+    ngx_http_cache_tag_watch_runtime.pending_ops = ngx_array_create(
+                ngx_http_cache_tag_watch_runtime.pending_pool, 8,
+                sizeof(ngx_http_cache_tag_pending_op_t));
+    if (ngx_http_cache_tag_watch_runtime.pending_ops == NULL) {
+        return NGX_ERROR;
+    }
+
     writer = ngx_http_cache_tag_store_writer();
     zone = pmcf->zones->elts;
     for (i = 0; i < pmcf->zones->nelts; i++) {
@@ -714,6 +809,20 @@ ngx_http_cache_tag_init_runtime(ngx_cycle_t *cycle,
         }
     }
 
+    /* Register the inotify fd with the event loop so the read handler fires
+     * immediately when the kernel delivers events — no 250 ms polling lag. */
+    ngx_http_cache_tag_watch_runtime.inotify_conn->read->handler =
+        ngx_http_cache_tag_inotify_handler;
+    ngx_http_cache_tag_watch_runtime.inotify_conn->read->log = cycle->log;
+    if (ngx_add_event(ngx_http_cache_tag_watch_runtime.inotify_conn->read,
+                      NGX_READ_EVENT, 0) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
+                      "cache_tag failed to add inotify read event");
+        return NGX_ERROR;
+    }
+
+    /* Timer still needed to drain the inter-worker shm queue (no fd to
+     * watch for that) and to flush the pending ops to the backing store. */
     ngx_http_cache_tag_watch_runtime.timer.handler =
         ngx_http_cache_tag_timer_handler;
     ngx_http_cache_tag_watch_runtime.timer.log = cycle->log;
@@ -749,8 +858,16 @@ ngx_http_cache_tag_shutdown_runtime(void) {
     }
 
     if (ngx_http_cache_tag_watch_runtime.inotify_conn != NULL) {
+        ngx_del_event(ngx_http_cache_tag_watch_runtime.inotify_conn->read,
+                      NGX_READ_EVENT, 0);
         ngx_close_connection(ngx_http_cache_tag_watch_runtime.inotify_conn);
         ngx_http_cache_tag_watch_runtime.inotify_conn = NULL;
+    }
+
+    if (ngx_http_cache_tag_watch_runtime.pending_pool != NULL) {
+        ngx_destroy_pool(ngx_http_cache_tag_watch_runtime.pending_pool);
+        ngx_http_cache_tag_watch_runtime.pending_pool = NULL;
+        ngx_http_cache_tag_watch_runtime.pending_ops = NULL;
     }
 
     ngx_http_cache_tag_store_runtime_shutdown();

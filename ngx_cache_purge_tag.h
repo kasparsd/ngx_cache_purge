@@ -162,6 +162,11 @@ typedef struct {
     ngx_rbtree_node_t             zone_sentinel;
     ngx_rbtree_t                  watch_index;
     ngx_rbtree_node_t             watch_sentinel;
+    /* Pending store operations accumulated by the inotify read handler.
+     * The timer handler drains these to the backing store each tick, then
+     * resets the pool to reclaim memory. */
+    ngx_pool_t                   *pending_pool;
+    ngx_array_t                  *pending_ops;
 } ngx_http_cache_tag_watch_runtime_t;
 
 typedef struct {

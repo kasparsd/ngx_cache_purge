@@ -153,6 +153,7 @@ char       *ngx_http_cache_purge_init_main_conf(ngx_conf_t *cf, void *conf);
 void       *ngx_http_cache_purge_create_loc_conf(ngx_conf_t *cf);
 char       *ngx_http_cache_purge_merge_loc_conf(ngx_conf_t *cf,
         void *parent, void *child);
+static ngx_int_t ngx_http_cache_purge_init_module(ngx_cycle_t *cycle);
 ngx_int_t   ngx_http_cache_purge_init_process(ngx_cycle_t *cycle);
 void        ngx_http_cache_purge_exit_process(ngx_cycle_t *cycle);
 
@@ -267,7 +268,7 @@ ngx_module_t  ngx_http_cache_purge_module = {
     ngx_http_cache_purge_module_commands,  /* module directives */
     NGX_HTTP_MODULE,                       /* module type */
     NULL,                                  /* init master */
-    NULL,                                  /* init module */
+    ngx_http_cache_purge_init_module,      /* init module */
     ngx_http_cache_purge_init_process,     /* init process */
     NULL,                                  /* init thread */
     NULL,                                  /* exit thread */
@@ -2039,22 +2040,69 @@ ngx_http_cache_purge_init(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
     return NGX_OK;
 }
 
+static ngx_int_t
+ngx_http_cache_purge_init_module(ngx_cycle_t *cycle) {
+#if (NGX_LINUX)
+    ngx_http_cache_purge_main_conf_t  *pmcf;
+    u_char                            *p, dir[NGX_MAX_PATH];
+    size_t                             dir_len;
+    ngx_file_info_t                    fi;
+
+    pmcf = ngx_http_cycle_get_module_main_conf(cycle,
+            ngx_http_cache_purge_module);
+    if (pmcf == NULL || pmcf->backend != NGX_HTTP_CACHE_TAG_BACKEND_SQLITE) {
+        return NGX_OK;
+    }
+
+    /* Validate that the directory component of sqlite_path exists.
+     * Runs once in the master process so config reload fails fast. */
+    p = pmcf->sqlite_path.data + pmcf->sqlite_path.len;
+    while (p > pmcf->sqlite_path.data && p[-1] != '/') {
+        p--;
+    }
+
+    if (p == pmcf->sqlite_path.data) {
+        return NGX_OK;  /* no directory component — relative to cwd, skip */
+    }
+
+    dir_len = (size_t)(p - pmcf->sqlite_path.data);
+    if (dir_len >= sizeof(dir)) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
+                      "cache_tag_index sqlite: path too long");
+        return NGX_ERROR;
+    }
+
+    ngx_memcpy(dir, pmcf->sqlite_path.data, dir_len);
+    dir[dir_len] = '\0';
+
+    if (ngx_file_info(dir, &fi) == NGX_FILE_ERROR) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno,
+                      "cache_tag_index sqlite: directory \"%s\" not found",
+                      dir);
+        return NGX_ERROR;
+    }
+
+    if (!ngx_is_dir(&fi)) {
+        ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
+                      "cache_tag_index sqlite: \"%s\" is not a directory",
+                      dir);
+        return NGX_ERROR;
+    }
+#endif
+
+    return NGX_OK;
+}
+
 ngx_int_t
 ngx_http_cache_purge_init_process(ngx_cycle_t *cycle) {
-    ngx_http_conf_ctx_t              *http_ctx;
     ngx_http_cache_purge_main_conf_t *pmcf;
 
 #if !(NGX_LINUX)
     return NGX_OK;
 #else
-    http_ctx = (ngx_http_conf_ctx_t *) ngx_get_conf(cycle->conf_ctx,
-               ngx_http_module);
-    if (http_ctx == NULL) {
-        return NGX_OK;
-    }
-
-    pmcf = http_ctx->main_conf[ngx_http_cache_purge_module.ctx_index];
-    if (!ngx_http_cache_tag_store_configured(pmcf)) {
+    pmcf = ngx_http_cycle_get_module_main_conf(cycle,
+            ngx_http_cache_purge_module);
+    if (pmcf == NULL || !ngx_http_cache_tag_store_configured(pmcf)) {
         return NGX_OK;
     }
 
