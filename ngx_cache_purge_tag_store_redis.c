@@ -573,7 +573,7 @@ ngx_http_cache_tag_store_redis_get_zone_state(ngx_http_cache_tag_store_t *store,
             return NGX_ERROR;
         }
         rc = ngx_http_cache_tag_store_redis_do_get_zone_state(store, zone_name,
-                                                               state, log);
+                state, log);
         if (rc == NGX_OK) {
             break;
         }
@@ -644,7 +644,7 @@ ngx_http_cache_tag_store_redis_set_zone_state(ngx_http_cache_tag_store_t *store,
             return NGX_ERROR;
         }
         rc = ngx_http_cache_tag_store_redis_do_set_zone_state(store, zone_name,
-                                                               state, log);
+                state, log);
         if (rc == NGX_OK) {
             break;
         }
