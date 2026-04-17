@@ -7,10 +7,10 @@
 #include <ngx_http.h>
 
 #if (NGX_LINUX)
-#include <sys/inotify.h>
-#include <sys/stat.h>
-#include <dirent.h>
-#include <errno.h>
+    #include <sys/inotify.h>
+    #include <sys/stat.h>
+    #include <dirent.h>
+    #include <errno.h>
 #endif
 
 typedef struct ngx_http_cache_tag_zone_s
@@ -213,13 +213,13 @@ char *ngx_http_cache_tag_headers_conf(ngx_conf_t *cf, ngx_command_t *cmd,
 ngx_flag_t ngx_http_cache_tag_location_enabled(
     ngx_http_cache_purge_loc_conf_t *cplcf);
 ngx_int_t ngx_http_cache_tag_request_headers(ngx_http_request_t *r,
-                                             ngx_array_t **tags);
+        ngx_array_t **tags);
 ngx_int_t ngx_http_cache_tag_extract_tokens(ngx_pool_t *pool, u_char *value,
-                                            size_t len, ngx_array_t *tags,
-                                            ngx_log_t *log);
+        size_t len, ngx_array_t *tags,
+        ngx_log_t *log);
 ngx_int_t ngx_http_cache_tag_register_cache(ngx_conf_t *cf,
-                                            ngx_http_file_cache_t *cache,
-                                            ngx_array_t *headers);
+        ngx_http_file_cache_t *cache,
+        ngx_array_t *headers);
 ngx_int_t ngx_http_cache_tag_purge(ngx_http_request_t *r,
                                    ngx_http_file_cache_t *cache,
                                    ngx_array_t *tags);
@@ -288,6 +288,6 @@ ngx_int_t ngx_http_cache_tag_queue_enqueue_delete(
 #endif
 
 ngx_int_t ngx_http_cache_purge_request_mode(ngx_http_request_t *r,
-                                            ngx_flag_t default_soft);
+        ngx_flag_t default_soft);
 
 #endif

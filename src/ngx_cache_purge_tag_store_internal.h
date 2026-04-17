@@ -54,19 +54,19 @@ struct ngx_http_cache_tag_store_ops_s {
     ngx_int_t (*commit_batch)(ngx_http_cache_tag_store_t *store, ngx_log_t *log);
     ngx_int_t (*rollback_batch)(ngx_http_cache_tag_store_t *store, ngx_log_t *log);
     ngx_int_t (*replace_file_tags)(ngx_http_cache_tag_store_t *store,
-        ngx_str_t *zone_name, ngx_str_t *path, time_t mtime, off_t size,
-        ngx_array_t *tags, ngx_log_t *log);
+                                   ngx_str_t *zone_name, ngx_str_t *path, time_t mtime, off_t size,
+                                   ngx_array_t *tags, ngx_log_t *log);
     ngx_int_t (*delete_file)(ngx_http_cache_tag_store_t *store,
-        ngx_str_t *zone_name, ngx_str_t *path, ngx_log_t *log);
+                             ngx_str_t *zone_name, ngx_str_t *path, ngx_log_t *log);
     ngx_int_t (*collect_paths_by_tags)(ngx_http_cache_tag_store_t *store,
-        ngx_pool_t *pool, ngx_str_t *zone_name, ngx_array_t *tags,
-        ngx_array_t **paths, ngx_log_t *log);
+                                       ngx_pool_t *pool, ngx_str_t *zone_name, ngx_array_t *tags,
+                                       ngx_array_t **paths, ngx_log_t *log);
     ngx_int_t (*get_zone_state)(ngx_http_cache_tag_store_t *store,
-        ngx_str_t *zone_name, ngx_http_cache_tag_zone_state_t *state,
-        ngx_log_t *log);
+                                ngx_str_t *zone_name, ngx_http_cache_tag_zone_state_t *state,
+                                ngx_log_t *log);
     ngx_int_t (*set_zone_state)(ngx_http_cache_tag_store_t *store,
-        ngx_str_t *zone_name, ngx_http_cache_tag_zone_state_t *state,
-        ngx_log_t *log);
+                                ngx_str_t *zone_name, ngx_http_cache_tag_zone_state_t *state,
+                                ngx_log_t *log);
 };
 
 #if (NGX_CACHE_PURGE_SQLITE)

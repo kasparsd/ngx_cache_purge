@@ -37,11 +37,11 @@ struct ngx_http_cache_purge_metrics_shctx_s {
 
 /* Public API */
 char      *ngx_http_cache_purge_stats_conf(ngx_conf_t *cf,
-               ngx_command_t *cmd, void *conf);
+        ngx_command_t *cmd, void *conf);
 ngx_int_t  ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone,
-               void *data);
+        void *data);
 ngx_int_t  ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
-               ngx_http_cache_purge_main_conf_t *pmcf);
+        ngx_http_cache_purge_main_conf_t *pmcf);
 ngx_int_t  ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r);
 
 #endif /* _NGX_CACHE_PURGE_METRICS_H_INCLUDED_ */
