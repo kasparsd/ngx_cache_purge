@@ -117,7 +117,7 @@ For most users, the recommended installation path is to build a dynamic module a
 For example, if `nginx -v` reports `nginx/1.28.1`:
 
 ```bash
-cd ~/build/nginx-cache-purge
+cd ~/build/nginx-cache-pilot
 wget https://nginx.org/download/nginx-1.28.1.tar.gz
 tar xf nginx-1.28.1.tar.gz
 cd nginx-1.28.1
@@ -313,17 +313,17 @@ location /_cache_stats {
 
 `tag_index` is omitted when no `cache_pilot_tag_index` is configured. `purges` counters are global across all zones and survive `nginx -s reload`.
 
-**Prometheus metrics** (prefix `nginx_cache_purge_`):
+**Prometheus metrics** (prefix `nginx_cache_pilot_`):
 
-- `nginx_cache_purge_purges_total{type,mode}` — counter, purge operations by type (`exact`, `wildcard`, `tag`, `all`) and mode (`hard`, `soft`)
-- `nginx_cache_purge_zone_size_bytes{zone}` — gauge, current zone usage in bytes
-- `nginx_cache_purge_zone_max_size_bytes{zone}` — gauge, configured maximum zone size
-- `nginx_cache_purge_zone_cold{zone}` — gauge, 1 while the cache loader is still warming the zone
-- `nginx_cache_purge_zone_entries{zone,state}` — gauge, entry count by state (`valid`, `expired`, `updating`)
-- `nginx_cache_purge_tag_index_info{zone,backend}` — info gauge, tag index backend type
-- `nginx_cache_purge_tag_queue_size{zone}` — gauge, pending entries in the inotify write queue
-- `nginx_cache_purge_tag_queue_capacity{zone}` — gauge, maximum queue capacity
-- `nginx_cache_purge_tag_queue_dropped_total{zone}` — counter, queue entries dropped due to overflow
+- `nginx_cache_pilot_purges_total{type,mode}` — counter, purge operations by type (`exact`, `wildcard`, `tag`, `all`) and mode (`hard`, `soft`)
+- `nginx_cache_pilot_zone_size_bytes{zone}` — gauge, current zone usage in bytes
+- `nginx_cache_pilot_zone_max_size_bytes{zone}` — gauge, configured maximum zone size
+- `nginx_cache_pilot_zone_cold{zone}` — gauge, 1 while the cache loader is still warming the zone
+- `nginx_cache_pilot_zone_entries{zone,state}` — gauge, entry count by state (`valid`, `expired`, `updating`)
+- `nginx_cache_pilot_tag_index_info{zone,backend}` — info gauge, tag index backend type
+- `nginx_cache_pilot_tag_queue_size{zone}` — gauge, pending entries in the inotify write queue
+- `nginx_cache_pilot_tag_queue_capacity{zone}` — gauge, maximum queue capacity
+- `nginx_cache_pilot_tag_queue_dropped_total{zone}` — counter, queue entries dropped due to overflow
 
 ## Partial Keys
 
@@ -768,7 +768,7 @@ After running some purge requests, re-fetch the endpoint and verify the `purges`
 Stop the validation nginx instance with:
 
 ```bash
-kill "$(cat /tmp/ngx-cache-purge-validation.pid)"
+kill "$(cat /tmp/ngx-cache-pilot-validation.pid)"
 ```
 
 ## License

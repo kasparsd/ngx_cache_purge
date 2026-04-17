@@ -20,7 +20,7 @@ fi
 
 ngx_addon_name=ngx_http_cache_pilot_module
 
-CACHE_PURGE_SRCS="$ngx_addon_dir/src/ngx_cache_pilot_module.c \
+CACHE_PILOT_SRCS="$ngx_addon_dir/src/ngx_cache_pilot_module.c \
 $ngx_addon_dir/src/ngx_cache_pilot_tag.c \
 $ngx_addon_dir/src/ngx_cache_pilot_tag_store.c \
 $ngx_addon_dir/src/ngx_cache_pilot_tag_store_redis.c \
@@ -44,7 +44,7 @@ ngx_feature_test='sqlite3 *db; (void)sqlite3_open(":memory:", &db); sqlite3_clos
 
 NGX_CACHE_PILOT_MODULE_LIBS=
 if [ $ngx_found = yes ]; then
-    CACHE_PURGE_SRCS="$CACHE_PURGE_SRCS \
+    CACHE_PILOT_SRCS="$CACHE_PILOT_SRCS \
 $ngx_addon_dir/src/ngx_cache_pilot_tag_store_sqlite.c"
     NGX_CACHE_PILOT_MODULE_LIBS="-lsqlite3"
 fi
@@ -52,14 +52,14 @@ fi
 if [ -n "$ngx_module_link" ]; then
     ngx_module_type=HTTP
     ngx_module_name="$ngx_addon_name"
-    ngx_module_srcs="$CACHE_PURGE_SRCS"
+    ngx_module_srcs="$CACHE_PILOT_SRCS"
     ngx_module_deps="$CACHE_PURGE_DEPS"
     ngx_module_libs="$NGX_CACHE_PILOT_MODULE_LIBS"
 
     . auto/module
 else
     HTTP_MODULES="$HTTP_MODULES $ngx_addon_name"
-    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $CACHE_PURGE_SRCS"
+    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $CACHE_PILOT_SRCS"
     NGX_ADDON_LIBS="$NGX_ADDON_LIBS $NGX_CACHE_PILOT_MODULE_LIBS"
 fi
 

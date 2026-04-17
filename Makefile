@@ -9,14 +9,14 @@ DOCKER_COMPOSE ?= docker compose
 
 help:
 	@printf '%s\n' \
-		'make shell            Open a shell in the development container' \
-		'make nginx-build      Build NGINX with this module' \
-		'make nginx-build-dynamic Build this module as objs/ngx_http_cache_purge_module.so in the dev container' \
-		'make nginx-version    Build info for the installed NGINX binary' \
-		'make format           Run the repository formatter' \
-		'make test             Run the Test::Nginx suite' \
-		'make bench            Run full benchmark suite (60s per scenario)' \
-		'make bench-quick      Run abbreviated benchmark suite (15s per scenario)'
+		'make shell               Open a shell in the development container' \
+		'make nginx-build         Build NGINX with this module' \
+		'make nginx-build-dynamic Build this module as objs/ngx_http_cache_pilot_module.so' \
+		'make nginx-version       Build info for the installed NGINX binary' \
+		'make format              Run the repository formatter' \
+		'make test                Run the Test::Nginx suite' \
+		'make bench               Run full benchmark suite (60s per scenario)' \
+		'make bench-quick         Run abbreviated benchmark suite (15s per scenario)'
 
 shell:
 	$(DOCKER_COMPOSE) run --rm dev

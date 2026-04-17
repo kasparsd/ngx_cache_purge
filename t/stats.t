@@ -73,7 +73,7 @@ GET /_stats?format=prometheus
 --- error_code: 200
 --- response_headers
 Content-Type: text/plain; version=0.0.4; charset=utf-8
---- response_body_like: nginx_cache_purge_purges_total
+--- response_body_like: nginx_cache_pilot_purges_total
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -90,7 +90,7 @@ GET /_stats
 --- error_code: 200
 --- response_headers
 Content-Type: text/plain; version=0.0.4; charset=utf-8
---- response_body_like: nginx_cache_purge_purges_total
+--- response_body_like: nginx_cache_pilot_purges_total
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
