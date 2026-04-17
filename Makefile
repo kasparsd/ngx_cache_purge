@@ -1,7 +1,7 @@
 NGINX_VERSION ?= 1.25.5
 NGINX_SRC_DIR ?= /opt/nginx-src/nginx-$(NGINX_VERSION)
 NGINX_BUILD_PREFIX ?= /opt/nginx
-MODULE_DIR ?= /workspace
+MODULE_DIR ?= ./
 JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 DOCKER_COMPOSE ?= docker compose
 
@@ -48,8 +48,8 @@ nginx-version:
 	"$(NGINX_BUILD_PREFIX)/sbin/nginx" -V
 
 format:
-	astyle -v --options=.astylerc ./src/*.c
-	dos2unix ./src/*.c ./src/*.h
+	astyle -v --options=.astylerc src/*.c src/*.h
+	dos2unix src/*
 
 test:
 	$(MAKE) nginx-build >/tmp/nginx-build.log
