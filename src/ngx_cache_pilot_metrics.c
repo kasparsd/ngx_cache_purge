@@ -493,7 +493,7 @@ ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
 
     zone = ngx_shared_memory_add(cf, &zone_name,
                                  4 * ngx_pagesize,
-                                 &ngx_http_cache_purge_module);
+                                 &ngx_http_cache_pilot_module);
     if (zone == NULL) {
         return NGX_ERROR;
     }
@@ -531,8 +531,8 @@ ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r) {
         return rc;
     }
 
-    pmcf  = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    pmcf  = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
 
     if (cplcf->stat_zones == NULL || cplcf->stat_zones->nelts == 0) {
         return NGX_HTTP_NO_CONTENT;

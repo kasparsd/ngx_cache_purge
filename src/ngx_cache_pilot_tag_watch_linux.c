@@ -56,7 +56,7 @@ ngx_http_cache_tag_queue_init_conf(ngx_conf_t *cf,
 
     pmcf->queue_zone = ngx_shared_memory_add(cf, &queue_name,
                        pmcf->queue_shm_size,
-                       &ngx_http_cache_purge_module);
+                       &ngx_http_cache_pilot_module);
     if (pmcf->queue_zone == NULL) {
         return NGX_ERROR;
     }

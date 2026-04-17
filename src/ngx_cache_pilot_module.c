@@ -176,7 +176,7 @@ static ngx_conf_enum_t  ngx_http_cache_purge_response_types[] = {
     { ngx_null_string,    0 }
 };
 
-static ngx_command_t  ngx_http_cache_purge_module_commands[] = {
+static ngx_command_t  ngx_http_cache_pilot_module_commands[] = {
     {
         ngx_string("cache_pilot_tag_index"),
         NGX_HTTP_MAIN_CONF|NGX_CONF_2MORE,
@@ -283,7 +283,7 @@ static ngx_command_t  ngx_http_cache_purge_module_commands[] = {
     ngx_null_command
 };
 
-static ngx_http_module_t  ngx_http_cache_purge_module_ctx = {
+static ngx_http_module_t  ngx_http_cache_pilot_module_ctx = {
     NULL,                                  /* preconfiguration */
     NULL,                                  /* postconfiguration */
 
@@ -299,8 +299,8 @@ static ngx_http_module_t  ngx_http_cache_purge_module_ctx = {
 
 ngx_module_t  ngx_http_cache_pilot_module = {
     NGX_MODULE_V1,
-    &ngx_http_cache_purge_module_ctx,      /* module context */
-    ngx_http_cache_purge_module_commands,  /* module directives */
+    &ngx_http_cache_pilot_module_ctx,      /* module context */
+    ngx_http_cache_pilot_module_commands,  /* module directives */
     NGX_HTTP_MODULE,                       /* module type */
     NULL,                                  /* init master */
     ngx_http_cache_purge_init_module,      /* init module */
@@ -338,7 +338,7 @@ ngx_http_cache_purge_dispatch_special(ngx_http_request_t *r,
 
             if (rc == NGX_OK) {
                 pmcf_m   = ngx_http_get_module_main_conf(r,
-                           ngx_http_cache_purge_module);
+                           ngx_http_cache_pilot_module);
                 tag_soft = ngx_http_cache_purge_request_mode(r,
                            cplcf->conf->soft);
                 if (tag_soft) {
@@ -433,7 +433,7 @@ ngx_http_fastcgi_cache_purge_conf(ngx_conf_t *cf, ngx_command_t *cmd,
                                   void *conf) {
     ngx_http_cache_purge_loc_conf_t   *cplcf;
 
-    cplcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_cache_purge_module);
+    cplcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_cache_pilot_module);
 
     /* check for duplicates / collisions */
     if (cplcf->fastcgi.enable != NGX_CONF_UNSET) {
@@ -485,7 +485,7 @@ ngx_http_fastcgi_cache_purge_handler(ngx_http_request_t *r) {
     rc = NGX_OK;
 
     /* Purge-all option */
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     handled = 0;
     rc = ngx_http_cache_purge_dispatch_special(r, cache, cplcf, &handled);
     if (handled) {
@@ -635,7 +635,7 @@ char *
 ngx_http_proxy_cache_purge_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_http_cache_purge_loc_conf_t   *cplcf;
 
-    cplcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_cache_purge_module);
+    cplcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_cache_pilot_module);
 
     /* check for duplicates / collisions */
     if (cplcf->proxy.enable != NGX_CONF_UNSET) {
@@ -688,7 +688,7 @@ ngx_http_proxy_cache_purge_handler(ngx_http_request_t *r) {
     rc = NGX_OK;
 
     /* Purge-all option */
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     handled = 0;
     rc = ngx_http_cache_purge_dispatch_special(r, cache, cplcf, &handled);
     if (handled) {
@@ -768,7 +768,7 @@ char *
 ngx_http_scgi_cache_purge_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_http_cache_purge_loc_conf_t   *cplcf;
 
-    cplcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_cache_purge_module);
+    cplcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_cache_pilot_module);
 
     /* check for duplicates / collisions */
     if (cplcf->scgi.enable != NGX_CONF_UNSET) {
@@ -821,7 +821,7 @@ ngx_http_scgi_cache_purge_handler(ngx_http_request_t *r) {
     rc = NGX_OK;
 
     /* Purge-all option */
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     handled = 0;
     rc = ngx_http_cache_purge_dispatch_special(r, cache, cplcf, &handled);
     if (handled) {
@@ -927,7 +927,7 @@ char *
 ngx_http_uwsgi_cache_purge_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     ngx_http_cache_purge_loc_conf_t   *cplcf;
 
-    cplcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_cache_purge_module);
+    cplcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_cache_pilot_module);
 
     /* check for duplicates / collisions */
     if (cplcf->uwsgi.enable != NGX_CONF_UNSET) {
@@ -981,7 +981,7 @@ ngx_http_uwsgi_cache_purge_handler(ngx_http_request_t *r) {
     rc = NGX_OK;
 
     /* Purge-all option */
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     handled = 0;
     rc = ngx_http_cache_purge_dispatch_special(r, cache, cplcf, &handled);
     if (handled) {
@@ -1351,7 +1351,7 @@ ngx_http_cache_purge_partial_completion(ngx_event_t *ev) {
     if (ctx->rc == NGX_OK) {
         {
             ngx_http_cache_purge_main_conf_t *pmcf_m;
-            pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
+            pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
             if (ctx->soft) {
                 NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_wildcard_soft);
             } else {
@@ -1583,7 +1583,7 @@ ngx_int_t
 ngx_http_cache_purge_access_handler(ngx_http_request_t *r) {
     ngx_http_cache_purge_loc_conf_t   *cplcf;
 
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
 
     /* Safety check: if conf is not properly initialized, fall through to original handler */
     if (cplcf->conf == NULL || cplcf->conf == NGX_CONF_UNSET_PTR) {
@@ -1653,7 +1653,7 @@ ngx_http_cache_purge_send_response(ngx_http_request_t *r) {
     size_t        resp_body_size;
 
     ngx_http_cache_purge_loc_conf_t   *cplcf;
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
 
     if (r->cache->keys.nelts == 0) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -1893,7 +1893,7 @@ ngx_http_cache_purge_init_module(ngx_cycle_t *cycle) {
     ngx_file_info_t                    fi;
 
     pmcf = ngx_http_cycle_get_module_main_conf(cycle,
-            ngx_http_cache_purge_module);
+            ngx_http_cache_pilot_module);
     if (pmcf == NULL || pmcf->backend != NGX_HTTP_CACHE_TAG_BACKEND_SQLITE) {
         return NGX_OK;
     }
@@ -1942,7 +1942,7 @@ ngx_http_cache_purge_init_process(ngx_cycle_t *cycle) {
     ngx_http_cache_purge_main_conf_t *pmcf;
 
     pmcf = ngx_http_cycle_get_module_main_conf(cycle,
-            ngx_http_cache_purge_module);
+            ngx_http_cache_pilot_module);
     if (pmcf == NULL) {
         return NGX_OK;
     }
@@ -1999,7 +1999,7 @@ ngx_http_cache_purge_handler(ngx_http_request_t *r) {
     }
 #  endif
 
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     rc = NGX_OK;
     tags = NULL;
     mode = ngx_http_cache_purge_request_mode(r, cplcf->conf->soft);
@@ -2103,7 +2103,7 @@ ngx_http_file_cache_purge(ngx_http_request_t *r) {
     /* file deleted from cache */
     {
         ngx_http_cache_purge_main_conf_t *pmcf_m;
-        pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
+        pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
         NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_exact_hard);
     }
 
@@ -2164,7 +2164,7 @@ ngx_http_file_cache_purge_soft(ngx_http_request_t *r) {
 
     {
         ngx_http_cache_purge_main_conf_t *pmcf_m;
-        pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
+        pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
         NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_exact_soft);
     }
 
@@ -2201,7 +2201,7 @@ ngx_http_cache_purge_request_mode(ngx_http_request_t *r, ngx_flag_t default_soft
     ngx_table_elt_t  *header;
     ngx_uint_t        i;
 
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     if (cplcf == NULL || cplcf->purge_mode_header.len == 0) {
         return default_soft;
     }
@@ -2254,7 +2254,7 @@ ngx_http_cache_purge_all(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
                   "purge_all http in %s",
                   cache->path->name.data);
 
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
 
     ngx_memzero(&ctx, sizeof(ctx));
     ctx.cache = cache;
@@ -2279,7 +2279,7 @@ ngx_http_cache_purge_all(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
     {
         ngx_http_cache_purge_main_conf_t *pmcf_m;
         ngx_int_t soft_m;
-        pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
+        pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
         soft_m = cplcf->conf->soft;
         if (soft_m) {
             NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_all_soft);
@@ -2321,7 +2321,7 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     }
     key.len--;
 
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     soft = ngx_http_cache_purge_request_mode(r, cplcf->conf->soft);
 
 #if (NGX_CACHE_PILOT_THREADS)
@@ -2406,7 +2406,7 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
 
     {
         ngx_http_cache_purge_main_conf_t *pmcf_m;
-        pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
+        pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
         if (soft) {
             NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_wildcard_soft);
         } else {
@@ -3021,7 +3021,7 @@ ngx_http_cache_purge_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
 
 #else /* !NGX_HTTP_CACHE */
 
-static ngx_http_module_t  ngx_http_cache_purge_module_ctx = {
+static ngx_http_module_t  ngx_http_cache_pilot_module_ctx = {
     NULL,  /* preconfiguration */
     NULL,  /* postconfiguration */
 
@@ -3037,7 +3037,7 @@ static ngx_http_module_t  ngx_http_cache_purge_module_ctx = {
 
 ngx_module_t  ngx_http_cache_pilot_module = {
     NGX_MODULE_V1,
-    &ngx_http_cache_purge_module_ctx,  /* module context */
+    &ngx_http_cache_pilot_module_ctx,  /* module context */
     NULL,                              /* module directives */
     NGX_HTTP_MODULE,                   /* module type */
     NULL,                              /* init master */

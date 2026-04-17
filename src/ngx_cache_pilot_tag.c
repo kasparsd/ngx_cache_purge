@@ -228,7 +228,7 @@ ngx_http_cache_tag_request_headers(ngx_http_request_t *r, ngx_array_t **tags) {
     ngx_uint_t                        i, j;
     ngx_array_t                      *result;
 
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
 
     if (!ngx_http_cache_tag_location_enabled(cplcf)) {
         *tags = NULL;
@@ -290,7 +290,7 @@ ngx_http_cache_tag_register_cache(ngx_conf_t *cf, ngx_http_file_cache_t *cache,
         return NGX_OK;
     }
 
-    pmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_cache_purge_module);
+    pmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_cache_pilot_module);
     if (!ngx_http_cache_tag_store_configured(pmcf)) {
         return NGX_OK;
     }
@@ -374,12 +374,12 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
 
     http_ctx = (ngx_http_conf_ctx_t *) ngx_get_conf(ngx_cycle->conf_ctx,
                ngx_http_module);
-    pmcf = http_ctx->main_conf[ngx_http_cache_purge_module.ctx_index];
+    pmcf = http_ctx->main_conf[ngx_http_cache_pilot_module.ctx_index];
     if (!ngx_http_cache_tag_store_configured(pmcf)) {
         return NGX_DECLINED;
     }
 
-    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_purge_module);
+    cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     soft = ngx_http_cache_purge_request_mode(r, cplcf->conf->soft);
     zone = NULL;
 #if (NGX_LINUX)
