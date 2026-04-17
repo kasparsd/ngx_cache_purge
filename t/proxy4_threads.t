@@ -1,7 +1,7 @@
 # vi:filetype=perl
 #
 # Wildcard / partial-key purge with a thread pool configured.
-# Verifies that ngx_http_cache_purge_partial() takes the async thread-pool
+# Verifies that ngx_http_cache_pilot_partial() takes the async thread-pool
 # path (NGX_CACHE_PILOT_THREADS) when a "default" thread pool exists, and
 # still returns the correct response and leaves non-matching entries intact.
 #

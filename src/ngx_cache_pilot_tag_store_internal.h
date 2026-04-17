@@ -40,7 +40,7 @@ struct ngx_http_cache_tag_store_s {
         struct {
             ngx_connection_t             *conn;   /* owns fd lifecycle */
             ngx_socket_t                  fd;     /* cached conn->fd for send/recv */
-            ngx_http_cache_purge_main_conf_t *pmcf;
+            ngx_http_cache_pilot_main_conf_t *pmcf;
             u_char                        recv_buf[4096];
             size_t                        recv_pos;
             size_t                        recv_len;
@@ -71,10 +71,10 @@ struct ngx_http_cache_tag_store_ops_s {
 
 #if (NGX_CACHE_PILOT_SQLITE)
 ngx_http_cache_tag_store_t *ngx_http_cache_tag_store_sqlite_open(
-    ngx_http_cache_purge_main_conf_t *pmcf, ngx_flag_t readonly, ngx_log_t *log);
+    ngx_http_cache_pilot_main_conf_t *pmcf, ngx_flag_t readonly, ngx_log_t *log);
 #endif
 ngx_http_cache_tag_store_t *ngx_http_cache_tag_store_redis_open(
-    ngx_http_cache_purge_main_conf_t *pmcf, ngx_flag_t readonly, ngx_log_t *log);
+    ngx_http_cache_pilot_main_conf_t *pmcf, ngx_flag_t readonly, ngx_log_t *log);
 
 #endif
 

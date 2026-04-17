@@ -7,11 +7,11 @@
 static ngx_flag_t ngx_http_cache_tag_headers_equal(ngx_array_t *left,
         ngx_array_t *right);
 static char *ngx_http_cache_tag_index_conf_redis(ngx_conf_t *cf,
-        ngx_http_cache_purge_main_conf_t *pmcf, ngx_str_t *value);
+        ngx_http_cache_pilot_main_conf_t *pmcf, ngx_str_t *value);
 
 char *
 ngx_http_cache_tag_index_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_http_cache_purge_main_conf_t  *pmcf;
+    ngx_http_cache_pilot_main_conf_t  *pmcf;
     ngx_str_t                         *value;
 
     pmcf = conf;
@@ -58,7 +58,7 @@ ngx_http_cache_tag_index_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
 
 static char *
 ngx_http_cache_tag_index_conf_redis(ngx_conf_t *cf,
-                                    ngx_http_cache_purge_main_conf_t *pmcf,
+                                    ngx_http_cache_pilot_main_conf_t *pmcf,
                                     ngx_str_t *value) {
     ngx_uint_t  i;
     u_char     *colon;
@@ -184,7 +184,7 @@ ngx_http_cache_tag_index_conf_redis(ngx_conf_t *cf,
 
 char *
 ngx_http_cache_tag_headers_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
-    ngx_http_cache_purge_loc_conf_t  *cplcf;
+    ngx_http_cache_pilot_loc_conf_t  *cplcf;
     ngx_str_t                        *value, *header;
     ngx_uint_t                        i;
 
@@ -215,13 +215,13 @@ ngx_http_cache_tag_headers_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) 
 }
 
 ngx_flag_t
-ngx_http_cache_tag_location_enabled(ngx_http_cache_purge_loc_conf_t *cplcf) {
+ngx_http_cache_tag_location_enabled(ngx_http_cache_pilot_loc_conf_t *cplcf) {
     return cplcf->cache_tag_watch && cplcf->cache_tag_headers != NULL;
 }
 
 ngx_int_t
 ngx_http_cache_tag_request_headers(ngx_http_request_t *r, ngx_array_t **tags) {
-    ngx_http_cache_purge_loc_conf_t  *cplcf;
+    ngx_http_cache_pilot_loc_conf_t  *cplcf;
     ngx_list_part_t                  *part;
     ngx_table_elt_t                  *header;
     ngx_str_t                        *wanted;
@@ -282,7 +282,7 @@ ngx_http_cache_tag_request_headers(ngx_http_request_t *r, ngx_array_t **tags) {
 ngx_int_t
 ngx_http_cache_tag_register_cache(ngx_conf_t *cf, ngx_http_file_cache_t *cache,
                                   ngx_array_t *headers) {
-    ngx_http_cache_purge_main_conf_t  *pmcf;
+    ngx_http_cache_pilot_main_conf_t  *pmcf;
     ngx_http_cache_tag_zone_t         *zones, *zone;
     ngx_uint_t                         i;
 
@@ -359,8 +359,8 @@ ngx_int_t
 ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
                          ngx_array_t *tags) {
     ngx_http_conf_ctx_t              *http_ctx;
-    ngx_http_cache_purge_main_conf_t *pmcf;
-    ngx_http_cache_purge_loc_conf_t  *cplcf;
+    ngx_http_cache_pilot_main_conf_t *pmcf;
+    ngx_http_cache_pilot_loc_conf_t  *cplcf;
     ngx_http_cache_tag_zone_t        *zone;
     ngx_http_cache_tag_zone_state_t   state;
     ngx_array_t                      *paths;
@@ -380,7 +380,7 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
     }
 
     cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
-    soft = ngx_http_cache_purge_request_mode(r, cplcf->conf->soft);
+    soft = ngx_http_cache_pilot_request_mode(r, cplcf->conf->soft);
     zone = NULL;
 #if (NGX_LINUX)
     zone = ngx_http_cache_tag_lookup_zone(cache);
@@ -458,7 +458,7 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
     purged = 0;
     path = paths->elts;
     for (i = 0; i < paths->nelts; i++) {
-        rc = ngx_http_cache_purge_by_path(cache, &path[i], soft,
+        rc = ngx_http_cache_pilot_by_path(cache, &path[i], soft,
                                           r->connection->log);
         if (rc == NGX_OK) {
             purged++;
@@ -485,7 +485,7 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
 
 ngx_int_t
 ngx_http_cache_tag_process_init(ngx_cycle_t *cycle,
-                                ngx_http_cache_purge_main_conf_t *pmcf) {
+                                ngx_http_cache_pilot_main_conf_t *pmcf) {
 #if !(NGX_LINUX)
     (void) cycle;
     (void) pmcf;

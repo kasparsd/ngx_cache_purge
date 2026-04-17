@@ -21,13 +21,13 @@ typedef struct {
     ngx_uint_t queue_dropped;
     ngx_uint_t queue_size;
     ngx_uint_t queue_capacity;
-} ngx_http_cache_purge_zone_snapshot_t;
+} ngx_http_cache_pilot_zone_snapshot_t;
 
 
 /* ── rbtree walk (called while holding cache->shpool->mutex) ── */
 
 static void
-ngx_http_cache_purge_walk_rbtree(ngx_rbtree_node_t *node,
+ngx_http_cache_pilot_walk_rbtree(ngx_rbtree_node_t *node,
                                  ngx_rbtree_node_t *sentinel, time_t now,
                                  ngx_uint_t *valid, ngx_uint_t *expired, ngx_uint_t *updating) {
     ngx_http_file_cache_node_t *fcn;
@@ -36,9 +36,9 @@ ngx_http_cache_purge_walk_rbtree(ngx_rbtree_node_t *node,
         return;
     }
 
-    ngx_http_cache_purge_walk_rbtree(node->left,  sentinel, now,
+    ngx_http_cache_pilot_walk_rbtree(node->left,  sentinel, now,
                                      valid, expired, updating);
-    ngx_http_cache_purge_walk_rbtree(node->right, sentinel, now,
+    ngx_http_cache_pilot_walk_rbtree(node->right, sentinel, now,
                                      valid, expired, updating);
 
     fcn = (ngx_http_file_cache_node_t *) node;
@@ -66,9 +66,9 @@ ngx_http_cache_purge_walk_rbtree(ngx_rbtree_node_t *node,
 /* ── Collect one zone snapshot ── */
 
 static void
-ngx_http_cache_purge_snapshot_zone(ngx_http_cache_purge_stat_zone_t *sz,
-                                   ngx_http_cache_purge_main_conf_t *pmcf,
-                                   ngx_http_cache_purge_zone_snapshot_t *snap) {
+ngx_http_cache_pilot_snapshot_zone(ngx_http_cache_pilot_stat_zone_t *sz,
+                                   ngx_http_cache_pilot_main_conf_t *pmcf,
+                                   ngx_http_cache_pilot_zone_snapshot_t *snap) {
     ngx_http_file_cache_t *cache;
 #if (NGX_LINUX)
     ngx_http_cache_tag_queue_ctx_t *qctx;
@@ -87,7 +87,7 @@ ngx_http_cache_purge_snapshot_zone(ngx_http_cache_purge_stat_zone_t *sz,
     snap->entries_expired  = 0;
     snap->entries_updating = 0;
 
-    ngx_http_cache_purge_walk_rbtree(
+    ngx_http_cache_pilot_walk_rbtree(
         cache->sh->rbtree.root,
         cache->sh->rbtree.sentinel,
         ngx_time(),
@@ -134,7 +134,7 @@ ngx_cache_pilot_metrics_read(ngx_atomic_t *p) {
 /* ── Format negotiation ── */
 
 static ngx_int_t
-ngx_http_cache_purge_negotiate_format(ngx_http_request_t *r) {
+ngx_http_cache_pilot_negotiate_format(ngx_http_request_t *r) {
     ngx_str_t        fmt;
     ngx_list_part_t *part;
     ngx_table_elt_t *h;
@@ -191,7 +191,7 @@ ngx_http_cache_purge_negotiate_format(ngx_http_request_t *r) {
 /* ── Backend name helper ── */
 
 static const char *
-ngx_http_cache_purge_backend_str(ngx_uint_t backend) {
+ngx_http_cache_pilot_backend_str(ngx_uint_t backend) {
     switch (backend) {
     case NGX_HTTP_CACHE_TAG_BACKEND_SQLITE:
         return "sqlite";
@@ -206,11 +206,11 @@ ngx_http_cache_purge_backend_str(ngx_uint_t backend) {
 /* ── JSON serializer ── */
 
 static u_char *
-ngx_http_cache_purge_write_json(u_char *p, u_char *last,
-                                ngx_uint_t nzones, ngx_http_cache_purge_zone_snapshot_t *snaps,
-                                ngx_http_cache_purge_metrics_shctx_t *m) {
+ngx_http_cache_pilot_write_json(u_char *p, u_char *last,
+                                ngx_uint_t nzones, ngx_http_cache_pilot_zone_snapshot_t *snaps,
+                                ngx_http_cache_pilot_metrics_shctx_t *m) {
     ngx_uint_t  i;
-    ngx_http_cache_purge_zone_snapshot_t *s;
+    ngx_http_cache_pilot_zone_snapshot_t *s;
 
     p = ngx_slprintf(p, last,
                      "{"
@@ -273,7 +273,7 @@ ngx_http_cache_purge_write_json(u_char *p, u_char *last,
                              "\"dropped\":%ui"
                              "}"
                              "}",
-                             ngx_http_cache_purge_backend_str(s->tag_backend),
+                             ngx_http_cache_pilot_backend_str(s->tag_backend),
                              s->queue_size,
                              s->queue_capacity,
                              s->queue_dropped);
@@ -293,11 +293,11 @@ ngx_http_cache_purge_write_json(u_char *p, u_char *last,
 /* ── Prometheus serializer ── */
 
 static u_char *
-ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
-                                      ngx_uint_t nzones, ngx_http_cache_purge_zone_snapshot_t *snaps,
-                                      ngx_http_cache_purge_metrics_shctx_t *m) {
+ngx_http_cache_pilot_write_prometheus(u_char *p, u_char *last,
+                                      ngx_uint_t nzones, ngx_http_cache_pilot_zone_snapshot_t *snaps,
+                                      ngx_http_cache_pilot_metrics_shctx_t *m) {
     ngx_uint_t  i;
-    ngx_http_cache_purge_zone_snapshot_t *s;
+    ngx_http_cache_pilot_zone_snapshot_t *s;
 
     /* Global purge counters */
     p = ngx_slprintf(p, last,
@@ -390,7 +390,7 @@ ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
                          "nginx_cache_pilot_tag_index_info"
                          "{zone=\"%V\",backend=\"%s\"} 1\n",
                          &s->name,
-                         ngx_http_cache_purge_backend_str(s->tag_backend));
+                         ngx_http_cache_pilot_backend_str(s->tag_backend));
     }
 
     for (i = 0; i < nzones; i++) {
@@ -451,8 +451,8 @@ ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
 /* ── Shared-memory zone init callback ── */
 
 ngx_int_t
-ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
-    ngx_http_cache_purge_metrics_shctx_t *old;
+ngx_http_cache_pilot_metrics_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
+    ngx_http_cache_pilot_metrics_shctx_t *old;
     ngx_slab_pool_t                      *shpool;
 
     shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
@@ -465,25 +465,25 @@ ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
     }
 
     shm_zone->data = ngx_slab_alloc(shpool,
-                                    sizeof(ngx_http_cache_purge_metrics_shctx_t));
+                                    sizeof(ngx_http_cache_pilot_metrics_shctx_t));
     if (shm_zone->data == NULL) {
         ngx_log_error(NGX_LOG_EMERG, shm_zone->shm.log, 0,
-                      "cache_purge metrics: out of shared memory");
+                      "cache_pilot metrics: out of shared memory");
         return NGX_ERROR;
     }
 
     ngx_memzero(shm_zone->data,
-                sizeof(ngx_http_cache_purge_metrics_shctx_t));
+                sizeof(ngx_http_cache_pilot_metrics_shctx_t));
 
     return NGX_OK;
 }
 
 
-/* ── Register metrics shm zone (called from ngx_http_cache_purge_init_main_conf) ── */
+/* ── Register metrics shm zone (called from ngx_http_cache_pilot_init_main_conf) ── */
 
 ngx_int_t
-ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
-                                       ngx_http_cache_purge_main_conf_t *pmcf) {
+ngx_http_cache_pilot_metrics_init_conf(ngx_conf_t *cf,
+                                       ngx_http_cache_pilot_main_conf_t *pmcf) {
     static ngx_str_t  zone_name = ngx_string("ngx_cache_pilot_metrics");
     ngx_shm_zone_t   *zone;
 
@@ -498,7 +498,7 @@ ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
         return NGX_ERROR;
     }
 
-    zone->init = ngx_http_cache_purge_metrics_init_zone;
+    zone->init = ngx_http_cache_pilot_metrics_init_zone;
     pmcf->metrics_zone = zone;
 
     return NGX_OK;
@@ -508,11 +508,11 @@ ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
 /* ── HTTP handler ── */
 
 ngx_int_t
-ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r) {
-    ngx_http_cache_purge_main_conf_t      *pmcf;
-    ngx_http_cache_purge_loc_conf_t       *cplcf;
-    ngx_http_cache_purge_stat_zone_t      *stat_zones;
-    ngx_http_cache_purge_zone_snapshot_t  *snaps;
+ngx_http_cache_pilot_metrics_handler(ngx_http_request_t *r) {
+    ngx_http_cache_pilot_main_conf_t      *pmcf;
+    ngx_http_cache_pilot_loc_conf_t       *cplcf;
+    ngx_http_cache_pilot_stat_zone_t      *stat_zones;
+    ngx_http_cache_pilot_zone_snapshot_t  *snaps;
     ngx_uint_t                             nzones, fmt, i;
     u_char                                *buf, *p;
     size_t                                 buf_size;
@@ -542,16 +542,16 @@ ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r) {
     nzones     = cplcf->stat_zones->nelts;
 
     snaps = ngx_palloc(r->pool,
-                       nzones * sizeof(ngx_http_cache_purge_zone_snapshot_t));
+                       nzones * sizeof(ngx_http_cache_pilot_zone_snapshot_t));
     if (snaps == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     for (i = 0; i < nzones; i++) {
-        ngx_http_cache_purge_snapshot_zone(&stat_zones[i], pmcf, &snaps[i]);
+        ngx_http_cache_pilot_snapshot_zone(&stat_zones[i], pmcf, &snaps[i]);
     }
 
-    fmt = ngx_http_cache_purge_negotiate_format(r);
+    fmt = ngx_http_cache_pilot_negotiate_format(r);
 
     /*
      * Pre-allocate a buffer large enough for the response.
@@ -569,11 +569,11 @@ ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r) {
     }
 
     if (fmt == NGX_CACHE_PILOT_METRICS_FORMAT_PROMETHEUS) {
-        p = ngx_http_cache_purge_write_prometheus(
+        p = ngx_http_cache_pilot_write_prometheus(
                 buf, buf + buf_size, nzones, snaps, pmcf->metrics);
         ngx_str_set(&ct, "text/plain; version=0.0.4; charset=utf-8");
     } else {
-        p = ngx_http_cache_purge_write_json(
+        p = ngx_http_cache_pilot_write_json(
                 buf, buf + buf_size, nzones, snaps, pmcf->metrics);
         ngx_str_set(&ct, "application/json");
     }

@@ -12,7 +12,7 @@
  *
  * The struct tag matches the forward declaration in ngx_cache_pilot_tag.h.
  */
-struct ngx_http_cache_purge_metrics_shctx_s {
+struct ngx_http_cache_pilot_metrics_shctx_s {
     ngx_atomic_t  purges_exact_hard;
     ngx_atomic_t  purges_exact_soft;
     ngx_atomic_t  purges_wildcard_hard;
@@ -36,12 +36,12 @@ struct ngx_http_cache_purge_metrics_shctx_s {
 #define NGX_CACHE_PILOT_METRICS_FORMAT_PROMETHEUS  1
 
 /* Public API */
-char      *ngx_http_cache_purge_stats_conf(ngx_conf_t *cf,
+char      *ngx_http_cache_pilot_stats_conf(ngx_conf_t *cf,
         ngx_command_t *cmd, void *conf);
-ngx_int_t  ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone,
+ngx_int_t  ngx_http_cache_pilot_metrics_init_zone(ngx_shm_zone_t *shm_zone,
         void *data);
-ngx_int_t  ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
-        ngx_http_cache_purge_main_conf_t *pmcf);
-ngx_int_t  ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r);
+ngx_int_t  ngx_http_cache_pilot_metrics_init_conf(ngx_conf_t *cf,
+        ngx_http_cache_pilot_main_conf_t *pmcf);
+ngx_int_t  ngx_http_cache_pilot_metrics_handler(ngx_http_request_t *r);
 
 #endif /* _NGX_CACHE_PILOT_METRICS_H_INCLUDED_ */

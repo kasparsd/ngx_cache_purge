@@ -109,7 +109,7 @@ static const ngx_http_cache_tag_store_ops_t ngx_http_cache_tag_store_redis_ops =
 };
 
 ngx_http_cache_tag_store_t *
-ngx_http_cache_tag_store_redis_open(ngx_http_cache_purge_main_conf_t *pmcf,
+ngx_http_cache_tag_store_redis_open(ngx_http_cache_pilot_main_conf_t *pmcf,
                                     ngx_flag_t readonly, ngx_log_t *log) {
     ngx_http_cache_tag_store_t  *store;
 
