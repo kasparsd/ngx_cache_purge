@@ -1,4 +1,4 @@
-#include "ngx_cache_purge_tag.h"
+#include "ngx_cache_pilot_tag.h"
 
 #if (NGX_LINUX)
 
@@ -47,7 +47,7 @@ static ngx_int_t ngx_http_cache_tag_apply_pending_ops(
 ngx_int_t
 ngx_http_cache_tag_queue_init_conf(ngx_conf_t *cf,
                                    ngx_http_cache_purge_main_conf_t *pmcf) {
-    static ngx_str_t  queue_name = ngx_string("ngx_cache_purge_tag_queue");
+    static ngx_str_t  queue_name = ngx_string("ngx_cache_pilot_tag_queue");
     ngx_http_cache_tag_queue_ctx_t  *ctx;
 
     if (pmcf->queue_zone != NULL) {

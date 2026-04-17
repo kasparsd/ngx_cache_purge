@@ -1,4 +1,4 @@
-#include "ngx_cache_purge_tag.h"
+#include "ngx_cache_pilot_tag.h"
 
 #if (NGX_LINUX)
     #include <netdb.h>
@@ -26,7 +26,7 @@ ngx_http_cache_tag_index_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
                        "cache_pilot_tag_index requires Linux inotify support");
     return NGX_CONF_ERROR;
 #else
-#if (NGX_CACHE_PURGE_SQLITE)
+#if (NGX_CACHE_PILOT_SQLITE)
     if (ngx_strcmp(value[1].data, "sqlite") == 0) {
         if (cf->args->nelts != 3) {
             return NGX_CONF_ERROR;

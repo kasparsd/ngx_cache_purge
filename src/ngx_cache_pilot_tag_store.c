@@ -1,4 +1,4 @@
-#include "ngx_cache_purge_tag_store_internal.h"
+#include "ngx_cache_pilot_tag_store_internal.h"
 
 #if (NGX_LINUX)
 
@@ -24,7 +24,7 @@ ngx_http_cache_tag_store_open_writer(ngx_http_cache_purge_main_conf_t *pmcf,
     }
 
     switch (pmcf->backend) {
-#if (NGX_CACHE_PURGE_SQLITE)
+#if (NGX_CACHE_PILOT_SQLITE)
     case NGX_HTTP_CACHE_TAG_BACKEND_SQLITE:
         return ngx_http_cache_tag_store_sqlite_open(pmcf, 0, log);
 #endif
@@ -43,7 +43,7 @@ ngx_http_cache_tag_store_open_reader(ngx_http_cache_purge_main_conf_t *pmcf,
     }
 
     switch (pmcf->backend) {
-#if (NGX_CACHE_PURGE_SQLITE)
+#if (NGX_CACHE_PILOT_SQLITE)
     case NGX_HTTP_CACHE_TAG_BACKEND_SQLITE:
         return ngx_http_cache_tag_store_sqlite_open(pmcf, 1, log);
 #endif

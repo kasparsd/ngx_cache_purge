@@ -2,8 +2,8 @@
 #include <nginx.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
-#include "ngx_cache_purge_tag.h"
-#include "ngx_cache_purge_metrics.h"
+#include "ngx_cache_pilot_tag.h"
+#include "ngx_cache_pilot_metrics.h"
 
 #if (NGX_HTTP_CACHE)
 
@@ -126,7 +126,7 @@ ngx_http_cache_purge_snapshot_zone(ngx_http_cache_purge_stat_zone_t *sz,
 /* ── Atomic counter read ── */
 
 static ngx_inline ngx_atomic_uint_t
-ngx_cache_purge_metrics_read(ngx_atomic_t *p) {
+ngx_cache_pilot_metrics_read(ngx_atomic_t *p) {
     return (ngx_atomic_uint_t) ngx_atomic_fetch_add(p, 0);
 }
 
@@ -146,9 +146,9 @@ ngx_http_cache_purge_negotiate_format(ngx_http_request_t *r) {
     if (ngx_http_arg(r, (u_char *) "format", 6, &fmt) == NGX_OK) {
         if (fmt.len == 10
                 && ngx_strncasecmp(fmt.data, (u_char *) "prometheus", 10) == 0) {
-            return NGX_CACHE_PURGE_METRICS_FORMAT_PROMETHEUS;
+            return NGX_CACHE_PILOT_METRICS_FORMAT_PROMETHEUS;
         }
-        return NGX_CACHE_PURGE_METRICS_FORMAT_JSON;
+        return NGX_CACHE_PILOT_METRICS_FORMAT_JSON;
     }
 
     /* Accept header fallback — iterate headers_in list (portable across all
@@ -178,13 +178,13 @@ ngx_http_cache_purge_negotiate_format(ngx_http_request_t *r) {
         if (ngx_strnstr(h[i].value.data, "text/plain", h[i].value.len) != NULL
                 || ngx_strnstr(h[i].value.data, "application/openmetrics-text",
                                h[i].value.len) != NULL) {
-            return NGX_CACHE_PURGE_METRICS_FORMAT_PROMETHEUS;
+            return NGX_CACHE_PILOT_METRICS_FORMAT_PROMETHEUS;
         }
 
         break;
     }
 
-    return NGX_CACHE_PURGE_METRICS_FORMAT_JSON;
+    return NGX_CACHE_PILOT_METRICS_FORMAT_JSON;
 }
 
 
@@ -223,14 +223,14 @@ ngx_http_cache_purge_write_json(u_char *p, u_char *last,
                      "\"all\":{\"hard\":%uA,\"soft\":%uA}"
                      "},",
                      ngx_time(),
-                     m ? ngx_cache_purge_metrics_read(&m->purges_exact_hard)    : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_exact_soft)    : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_hard) : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_soft) : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_tag_hard)      : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_tag_soft)      : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_all_hard)      : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_all_soft)      : (ngx_atomic_uint_t)0);
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_exact_hard)    : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_exact_soft)    : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_wildcard_hard) : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_wildcard_soft) : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_tag_hard)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_tag_soft)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_all_hard)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_all_soft)      : (ngx_atomic_uint_t)0);
 
     p = ngx_slprintf(p, last, "\"zones\":{");
 
@@ -312,14 +312,14 @@ ngx_http_cache_purge_write_prometheus(u_char *p, u_char *last,
                      "nginx_cache_purge_purges_total{type=\"tag\",mode=\"soft\"} %uA\n"
                      "nginx_cache_purge_purges_total{type=\"all\",mode=\"hard\"} %uA\n"
                      "nginx_cache_purge_purges_total{type=\"all\",mode=\"soft\"} %uA\n",
-                     m ? ngx_cache_purge_metrics_read(&m->purges_exact_hard)    : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_exact_soft)    : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_hard) : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_wildcard_soft) : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_tag_hard)      : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_tag_soft)      : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_all_hard)      : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_purge_metrics_read(&m->purges_all_soft)      : (ngx_atomic_uint_t)0);
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_exact_hard)    : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_exact_soft)    : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_wildcard_hard) : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_wildcard_soft) : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_tag_hard)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_tag_soft)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_all_hard)      : (ngx_atomic_uint_t)0,
+                     m ? ngx_cache_pilot_metrics_read(&m->purges_all_soft)      : (ngx_atomic_uint_t)0);
 
     /* Zone size */
     p = ngx_slprintf(p, last,
@@ -484,7 +484,7 @@ ngx_http_cache_purge_metrics_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
 ngx_int_t
 ngx_http_cache_purge_metrics_init_conf(ngx_conf_t *cf,
                                        ngx_http_cache_purge_main_conf_t *pmcf) {
-    static ngx_str_t  zone_name = ngx_string("ngx_cache_purge_metrics");
+    static ngx_str_t  zone_name = ngx_string("ngx_cache_pilot_metrics");
     ngx_shm_zone_t   *zone;
 
     if (pmcf->metrics_zone != NULL) {
@@ -558,7 +558,7 @@ ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r) {
      * Generous upper bounds: 2 KB base + ~1.5 KB per zone for Prometheus,
      * 512 B base + ~600 B per zone for JSON.
      */
-    buf_size = (fmt == NGX_CACHE_PURGE_METRICS_FORMAT_PROMETHEUS)
+    buf_size = (fmt == NGX_CACHE_PILOT_METRICS_FORMAT_PROMETHEUS)
                ? (2048 + nzones * 1536)
                : (512  + nzones * 600);
     buf_size = ngx_align(buf_size, ngx_pagesize);
@@ -568,7 +568,7 @@ ngx_http_cache_purge_metrics_handler(ngx_http_request_t *r) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    if (fmt == NGX_CACHE_PURGE_METRICS_FORMAT_PROMETHEUS) {
+    if (fmt == NGX_CACHE_PILOT_METRICS_FORMAT_PROMETHEUS) {
         p = ngx_http_cache_purge_write_prometheus(
                 buf, buf + buf_size, nzones, snaps, pmcf->metrics);
         ngx_str_set(&ct, "text/plain; version=0.0.4; charset=utf-8");

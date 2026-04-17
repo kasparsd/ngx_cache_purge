@@ -31,8 +31,8 @@
 #include <nginx.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
-#include "ngx_cache_purge_tag.h"
-#include "ngx_cache_purge_metrics.h"
+#include "ngx_cache_pilot_tag.h"
+#include "ngx_cache_pilot_metrics.h"
 
 
 #ifndef nginx_version
@@ -342,10 +342,10 @@ ngx_http_cache_purge_dispatch_special(ngx_http_request_t *r,
                 tag_soft = ngx_http_cache_purge_request_mode(r,
                            cplcf->conf->soft);
                 if (tag_soft) {
-                    NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics,
+                    NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics,
                                                 purges_tag_soft);
                 } else {
-                    NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics,
+                    NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics,
                                                 purges_tag_hard);
                 }
             }
@@ -1353,9 +1353,9 @@ ngx_http_cache_purge_partial_completion(ngx_event_t *ev) {
             ngx_http_cache_purge_main_conf_t *pmcf_m;
             pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
             if (ctx->soft) {
-                NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics, purges_wildcard_soft);
+                NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_wildcard_soft);
             } else {
-                NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics, purges_wildcard_hard);
+                NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_wildcard_hard);
             }
         }
         r->write_event_handler = ngx_http_request_empty_handler;
@@ -2104,7 +2104,7 @@ ngx_http_file_cache_purge(ngx_http_request_t *r) {
     {
         ngx_http_cache_purge_main_conf_t *pmcf_m;
         pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
-        NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics, purges_exact_hard);
+        NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_exact_hard);
     }
 
     ngx_http_cache_purge_release_updating(c);
@@ -2165,7 +2165,7 @@ ngx_http_file_cache_purge_soft(ngx_http_request_t *r) {
     {
         ngx_http_cache_purge_main_conf_t *pmcf_m;
         pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
-        NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics, purges_exact_soft);
+        NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_exact_soft);
     }
 
     ngx_http_cache_purge_release_updating(c);
@@ -2282,9 +2282,9 @@ ngx_http_cache_purge_all(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
         pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
         soft_m = cplcf->conf->soft;
         if (soft_m) {
-            NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics, purges_all_soft);
+            NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_all_soft);
         } else {
-            NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics, purges_all_hard);
+            NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_all_hard);
         }
     }
 
@@ -2408,9 +2408,9 @@ ngx_http_cache_purge_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
         ngx_http_cache_purge_main_conf_t *pmcf_m;
         pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_purge_module);
         if (soft) {
-            NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics, purges_wildcard_soft);
+            NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_wildcard_soft);
         } else {
-            NGX_CACHE_PURGE_METRICS_INC(pmcf_m->metrics, purges_wildcard_hard);
+            NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_wildcard_hard);
         }
     }
 

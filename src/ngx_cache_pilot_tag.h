@@ -1,5 +1,5 @@
-#ifndef _NGX_CACHE_PURGE_TAG_H_INCLUDED_
-#define _NGX_CACHE_PURGE_TAG_H_INCLUDED_
+#ifndef _NGX_CACHE_PILOT_TAG_H_INCLUDED_
+#define _NGX_CACHE_PILOT_TAG_H_INCLUDED_
 
 #include <ngx_config.h>
 #include <nginx.h>
@@ -76,7 +76,7 @@ typedef enum {
 
 /*
  * Forward declaration for ngx_http_cache_purge_metrics_shctx_t.
- * Full definition is in ngx_cache_purge_metrics.h.
+ * Full definition is in ngx_cache_pilot_metrics.h.
  */
 struct ngx_http_cache_purge_metrics_shctx_s;
 typedef struct ngx_http_cache_purge_metrics_shctx_s
