@@ -1659,7 +1659,7 @@ ngx_http_cache_tag_store_redis_do_collect_paths_by_key_prefix(
     for (i = 0; i < key_texts->nelts; i++) {
         sub_paths = NULL;
         if (ngx_http_cache_tag_store_redis_read_string_array(store, pool,
-                        &sub_paths, log) != NGX_OK) {
+                &sub_paths, log) != NGX_OK) {
             return NGX_ERROR;
         }
 

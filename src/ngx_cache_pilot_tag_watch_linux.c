@@ -20,9 +20,9 @@ static void ngx_http_cache_tag_watch_insert(ngx_rbtree_node_t *temp,
 static ngx_http_cache_tag_zone_index_t *ngx_http_cache_tag_lookup_zone_index(
     ngx_http_file_cache_t *cache);
 static void ngx_http_cache_tag_zone_state_cache_set(ngx_http_file_cache_t *cache,
-    ngx_http_cache_tag_zone_state_t *state);
+        ngx_http_cache_tag_zone_state_t *state);
 static ngx_int_t ngx_http_cache_tag_zone_state_cache_sync(ngx_cycle_t *cycle,
-    ngx_http_cache_pilot_main_conf_t *pmcf);
+        ngx_http_cache_pilot_main_conf_t *pmcf);
 static ngx_http_cache_tag_watch_t *ngx_http_cache_tag_find_watch(int wd);
 static ngx_int_t ngx_http_cache_tag_remove_watch(int wd);
 static ngx_int_t ngx_http_cache_tag_add_watch(ngx_http_cache_tag_zone_t *zone,
@@ -1345,7 +1345,7 @@ ngx_http_cache_tag_zone_state_cache_set(ngx_http_file_cache_t *cache,
 
 static ngx_int_t
 ngx_http_cache_tag_zone_state_cache_sync(ngx_cycle_t *cycle,
-                                         ngx_http_cache_pilot_main_conf_t *pmcf) {
+        ngx_http_cache_pilot_main_conf_t *pmcf) {
     ngx_http_cache_tag_store_t       *reader;
     ngx_http_cache_tag_zone_t        *zone;
     ngx_http_cache_tag_zone_state_t   state;

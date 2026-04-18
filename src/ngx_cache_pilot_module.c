@@ -121,14 +121,12 @@ ngx_http_cache_pilot_filename_key(ngx_str_t *path, u_char *key);
 static ngx_int_t
 ngx_http_cache_pilot_partial_match(ngx_http_cache_pilot_partial_ctx_t *data,
                                    ngx_str_t *path, ngx_log_t *log);
-#if (NGX_LINUX)
 static ngx_int_t
 ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
                                      ngx_http_file_cache_t *cache,
                                      ngx_http_cache_pilot_main_conf_t **pmcf,
                                      ngx_http_cache_tag_zone_t **tag_zone,
                                      ngx_http_cache_tag_store_t **reader);
-#endif
 #if (NGX_CACHE_PILOT_THREADS)
 static ngx_thread_pool_t *ngx_http_cache_pilot_thread_pool(
     ngx_http_request_t *r);
@@ -1807,7 +1805,6 @@ ngx_http_cache_pilot_by_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
     return NGX_OK;
 }
 
-#if (NGX_LINUX)
 static ngx_int_t
 ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
                                      ngx_http_file_cache_t *cache,
@@ -1822,6 +1819,10 @@ ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
         return NGX_DECLINED;
     }
 
+#if !(NGX_LINUX)
+    (void) cache;
+    return NGX_DECLINED;
+#else
     if (ngx_http_cache_tag_flush_pending((ngx_cycle_t *) ngx_cycle) != NGX_OK) {
         return NGX_DECLINED;
     }
@@ -1838,8 +1839,8 @@ ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
 
     return ngx_http_cache_tag_zone_bootstrap_complete(cache)
            ? NGX_OK : NGX_DECLINED;
-}
 #endif
+}
 # if (nginx_version >= 1007009)
 
 /*
@@ -2145,16 +2146,13 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
     {
         ngx_http_cache_pilot_main_conf_t *pmcf_m;
         ngx_int_t                         fanout_used;
-#if (NGX_LINUX)
         ngx_http_cache_tag_zone_t       *tag_zone;
         ngx_http_cache_tag_store_t      *reader;
-#endif
 
         pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
         NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_exact_hard);
         fanout_used = 0;
 
-#if (NGX_LINUX)
         /* Key-index fan-out: purge Vary variants sharing the same cache key. */
         if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_m,
                 &tag_zone, &reader) == NGX_OK) {
@@ -2207,7 +2205,6 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
             NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics,
                                         key_index_exact_fanout);
         }
-#endif
     }
 
     ngx_http_cache_pilot_release_updating(c);
@@ -2223,7 +2220,6 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
     ngx_http_file_cache_t  *cache;
     ngx_http_cache_t       *c;
     ngx_http_cache_pilot_main_conf_t *pmcf_m;
-#if (NGX_LINUX)
     ngx_http_cache_tag_zone_t       *tag_zone;
     ngx_http_cache_tag_store_t      *reader;
     ngx_array_t                     *fan_paths;
@@ -2233,7 +2229,6 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
     ngx_uint_t                       ki;
     ngx_uint_t                       klen;
     u_char                          *p;
-#endif
 
     switch (ngx_http_file_cache_open(r)) {
     case NGX_OK:
@@ -2280,7 +2275,6 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
     fanout_used = 0;
-#if (NGX_LINUX)
     /* Key-index fan-out for soft purge: expire sibling Vary variants. */
     pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
     if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_m,
@@ -2322,17 +2316,14 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
             }
         }
     }
-#endif
 
     {
         pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
         NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_exact_soft);
-#if (NGX_LINUX)
         if (fanout_used) {
             NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics,
                                         key_index_exact_fanout);
         }
-#endif
     }
 
     ngx_http_cache_pilot_release_updating(c);
@@ -2466,6 +2457,13 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     ngx_str_t                            key;
     ngx_int_t                            soft;
     ngx_tree_ctx_t                       tree;
+    ngx_http_cache_pilot_main_conf_t    *pmcf_idx;
+    ngx_http_cache_tag_zone_t           *tag_zone;
+    ngx_http_cache_tag_store_t          *reader;
+    ngx_array_t                         *idx_paths;
+    ngx_int_t                            purge_rc;
+    ngx_int_t                            used_index;
+    ngx_uint_t                           k;
 #if (NGX_CACHE_PILOT_THREADS)
     ngx_thread_pool_t                   *tp;
     ngx_thread_task_t                   *task;
@@ -2555,69 +2553,51 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
         }
     }
 
-#if (NGX_LINUX)
     /* Index-first path: use key-prefix index to avoid filesystem walk. */
-    {
-        ngx_http_cache_pilot_main_conf_t *pmcf_idx;
-        ngx_http_cache_tag_zone_t        *tag_zone;
-        ngx_http_cache_tag_store_t       *reader;
-        ngx_array_t                      *idx_paths;
-        ngx_int_t                         purge_rc;
-        ngx_int_t                         used_index;
+    used_index = 0;
+    if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_idx,
+            &tag_zone, &reader) == NGX_OK) {
+        idx_paths = NULL;
+        if (ngx_http_cache_tag_store_collect_paths_by_key_prefix(reader,
+                r->pool, &tag_zone->zone_name, &key,
+                &idx_paths, r->connection->log) == NGX_OK
+                && idx_paths != NULL && idx_paths->nelts > 0) {
+            ngx_str_t *ip = idx_paths->elts;
+            for (k = 0; k < idx_paths->nelts; k++) {
+                purge_rc = ngx_http_cache_pilot_by_path(cache, &ip[k], soft,
+                                                        r->connection->log);
+                if (purge_rc == NGX_OK) {
+                    used_index = 1;
+                    continue;
+                }
 
-        used_index = 0;
-        if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_idx,
-                &tag_zone, &reader) == NGX_OK) {
-            idx_paths = NULL;
-            if (ngx_http_cache_tag_store_collect_paths_by_key_prefix(reader,
-                    r->pool, &tag_zone->zone_name, &key,
-                    &idx_paths, r->connection->log) == NGX_OK
-                    && idx_paths != NULL && idx_paths->nelts > 0) {
-                ngx_str_t  *ip = idx_paths->elts;
-                ngx_uint_t  k;
-                for (k = 0; k < idx_paths->nelts; k++) {
-                    purge_rc = ngx_http_cache_pilot_by_path(cache, &ip[k], soft,
-                                                            r->connection->log);
-                    if (purge_rc == NGX_OK) {
-                        used_index = 1;
-                        continue;
-                    }
-
-                    if (purge_rc != NGX_DECLINED) {
-                        return NGX_ERROR;
-                    }
+                if (purge_rc != NGX_DECLINED) {
+                    return NGX_ERROR;
                 }
             }
         }
+    }
 
-        if (used_index) {
-            NGX_CACHE_PILOT_METRICS_INC(pmcf_idx->metrics,
-                                        key_index_wildcard_hits);
-            goto partial_metrics;
+    if (!used_index) {
+        /* Walk the tree and remove all the files matching key_partial */
+        tree.init_handler = NULL;
+        tree.file_handler = soft
+                            ? ngx_http_cache_pilot_file_cache_soft_partial_file
+                            : ngx_http_cache_pilot_file_cache_delete_partial_file;
+        tree.pre_tree_handler = ngx_http_cache_pilot_file_cache_noop;
+        tree.post_tree_handler = ngx_http_cache_pilot_file_cache_noop;
+        tree.spec_handler = ngx_http_cache_pilot_file_cache_noop;
+        tree.data = ctx;
+        tree.alloc = 0;
+        tree.log = ngx_cycle->log;
+
+        if (ngx_walk_tree(&tree, &cache->path->name) != NGX_OK) {
+            return NGX_ERROR;
         }
+    } else {
+        NGX_CACHE_PILOT_METRICS_INC(pmcf_idx->metrics,
+                                    key_index_wildcard_hits);
     }
-#endif
-
-    /* Walk the tree and remove all the files matching key_partial */
-    tree.init_handler = NULL;
-    tree.file_handler = soft
-                        ? ngx_http_cache_pilot_file_cache_soft_partial_file
-                        : ngx_http_cache_pilot_file_cache_delete_partial_file;
-    tree.pre_tree_handler = ngx_http_cache_pilot_file_cache_noop;
-    tree.post_tree_handler = ngx_http_cache_pilot_file_cache_noop;
-    tree.spec_handler = ngx_http_cache_pilot_file_cache_noop;
-    tree.data = ctx;
-    tree.alloc = 0;
-    tree.log = ngx_cycle->log;
-
-    if (ngx_walk_tree(&tree, &cache->path->name) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
-#if (NGX_LINUX)
-partial_metrics:
-    ;
-#endif
 
     {
         ngx_http_cache_pilot_main_conf_t *pmcf_m;
