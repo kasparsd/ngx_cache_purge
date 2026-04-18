@@ -656,11 +656,13 @@ make bench-quick
 
 ### Benchmark suite
 
-The repository includes a container-only benchmark harness under `bench/` for measuring purge behavior under concurrent GET load. It runs five scenarios against the built module with no extra container dependencies:
+The repository includes a container-only benchmark harness under `bench/` for measuring purge behavior under concurrent GET load. It runs seven scenarios against the built module with no extra container dependencies:
 
 - exact-key soft purge
+- exact-key soft purge with key index enabled
 - exact-key soft purge with `Vary` fanout (`X-Variant` set to `a|b|c`)
 - wildcard soft purge
+- wildcard soft purge with key index enabled
 - cache-tag soft purge with SQLite index
 - cache-tag soft purge with Redis index
 
@@ -685,9 +687,9 @@ cat /workspace/bench/results/latest/summary.txt
 
 Results are written under `bench/results/<timestamp>/` with one JSON file per scenario plus `summary.json`, `summary.txt`, and aggregated nginx error-log artifacts. The `bench/results/latest` symlink points at the most recent run. During the Redis scenario, `bench/bench.pl` starts a local `redis-server` on `127.0.0.1:16379`, uses `bench/nginx_redis.conf`, and shuts Redis down during teardown. If nginx writes anything to its benchmark error log during startup or a scenario run, `bench/bench.pl` prints that log chunk inline and saves it under the run directory.
 
-The benchmark suite now uses explicit nginx templates: `bench/nginx.conf` for baseline SQLite-backed scenarios, `bench/nginx_fanout.conf` for the exact-key fanout (`Vary`) scenario, and `bench/nginx_redis.conf` for Redis-backed scenarios. If more benchmark layouts are added later, drop another `*.conf` template into `bench/`, assign scenarios to it in `bench/bench.pl`, and the runner will restart nginx when either the template or backend changes. You can also override the template for a whole run with `--config-template <name-or-path>`.
+The benchmark suite now uses explicit nginx templates: `bench/nginx.conf` for baseline SQLite-backed scenarios, `bench/nginx_indexed.conf` for indexed exact and wildcard scenarios, `bench/nginx_fanout.conf` for the exact-key fanout (`Vary`) scenario, and `bench/nginx_redis.conf` for Redis-backed scenarios. If more benchmark layouts are added later, drop another `*.conf` template into `bench/`, assign scenarios to it in `bench/bench.pl`, and the runner will restart nginx when either the template or backend changes. You can also override the template for a whole run with `--config-template <name-or-path>`.
 
-`bench/bench.pl` can also fail the run on threshold regressions with `--assert-file <path>`. The assertion file is JSON with optional `defaults` and per-scenario rules under `scenarios`, keyed by the scenario ids `exact`, `exact-fanout`, `wild`, `tag-sqlite`, and `tag-redis`. Metrics use dot-paths into the summary object, for example `get.rps`, `get.cache_hit_rate`, `get.latency_us.p95`, or `purge.rps`. Each rule supports `min` and/or `max`. See `bench/assertions.example.json` for a concrete example.
+`bench/bench.pl` can also fail the run on threshold regressions with `--assert-file <path>`. The assertion file is JSON with optional `defaults` and per-scenario rules under `scenarios`, keyed by the scenario ids `exact`, `exact-indexed`, `exact-fanout`, `wild`, `wild-indexed`, `tag-sqlite`, and `tag-redis`. Metrics use dot-paths into the summary object, for example `get.rps`, `get.cache_hit_rate`, `get.latency_us.p95`, or `purge.rps`. Each rule supports `min` and/or `max`. See `bench/assertions.example.json` for a concrete example.
 
 ### Docker Validation Config
 

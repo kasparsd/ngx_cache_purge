@@ -16,7 +16,26 @@
         "min": 9
       }
     },
+    "exact-indexed": {
+      "get.rps": {
+        "min": 3000
+      },
+      "get.latency_us.p95": {
+        "max": 30000
+      },
+      "purge.rps": {
+        "min": 9
+      }
+    },
     "wild": {
+      "get.rps": {
+        "min": 2500
+      },
+      "get.latency_us.p95": {
+        "max": 40000
+      }
+    },
+    "wild-indexed": {
       "get.rps": {
         "min": 2500
       },
