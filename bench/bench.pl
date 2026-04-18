@@ -67,6 +67,7 @@ my @all_scenarios = (
         prefix     => '/exact/',
         mode       => 'exact',
         backend    => 'sqlite',
+        index_tracking_mode => 'disabled',
     },
     {
         key        => 'exact-indexed',
@@ -76,8 +77,9 @@ my @all_scenarios = (
         prefix     => '/exact/',
         mode       => 'exact',
         backend    => 'sqlite',
-        index_zone => 'bench_exact',
-        require_index_ready => 1,
+        index_target_zone => 'bench_exact',
+        require_index_zone_ready => 1,
+        index_tracking_mode => 'readiness_only',
     },
     {
         key        => 'exact-fanout',
@@ -91,8 +93,9 @@ my @all_scenarios = (
         vary_values => [qw(a b c)],
         purge_header => 'X-Variant',
         purge_header_value => 'a',
-        index_zone => 'bench_fanout',
-        require_index_ready => 1,
+        index_target_zone => 'bench_fanout',
+        require_index_zone_ready => 1,
+        index_tracking_mode => 'exact_fanout',
     },
     {
         key        => 'wild',
@@ -102,6 +105,7 @@ my @all_scenarios = (
         prefix     => '/wild/',
         mode       => 'wildcard',
         backend    => 'sqlite',
+        index_tracking_mode => 'disabled',
     },
     {
         key        => 'wild-indexed',
@@ -111,8 +115,9 @@ my @all_scenarios = (
         prefix     => '/wild/',
         mode       => 'wildcard',
         backend    => 'sqlite',
-        index_zone => 'bench_wild',
-        require_index_ready => 1,
+        index_target_zone => 'bench_wild',
+        require_index_zone_ready => 1,
+        index_tracking_mode => 'wildcard_prefix',
     },
     {
         key        => 'tag-sqlite',
@@ -123,6 +128,7 @@ my @all_scenarios = (
         mode       => 'tag',
         tag_base   => 'bench-tag',
         backend    => 'sqlite',
+        index_tracking_mode => 'readiness_only',
     },
     {
         key        => 'tag-redis',
@@ -133,8 +139,9 @@ my @all_scenarios = (
         mode       => 'tag',
         tag_base   => 'bench-rtag',
         backend    => 'redis',
-        index_zone => 'bench_tag_redis',
-        require_index_ready => 1,
+        index_target_zone => 'bench_tag_redis',
+        require_index_zone_ready => 1,
+        index_tracking_mode => 'readiness_only',
     },
 );
 
@@ -386,6 +393,9 @@ sub run_scenario {
     my $purge_result = read_json($purge_out);
     my $metrics_delta = stats_delta($before, $after);
     my $nginx_log = record_nginx_error_log($run_dir, $scenario->{name});
+    my $index_plan = scenario_index_plan($scenario);
+    my $index_report = build_index_report($scenario, $before, $after,
+                                          $metrics_delta, $nginx_log);
 
     my $scenario_result = {
         scenario      => $scenario->{key},
@@ -399,6 +409,10 @@ sub run_scenario {
         stats_before  => $before,
         stats_after   => $after,
         metrics_delta => $metrics_delta,
+        index_plan    => $index_plan,
+        index_report  => $index_report,
+        table_index_plan => $index_plan->{short_label},
+        table_index_observed => $index_report->{short_label},
         nginx_error_log => $nginx_log,
     };
 
@@ -605,15 +619,155 @@ sub scenario_ready_state {
     my $state;
     my $stats;
 
-    return 1 unless $scenario->{require_index_ready};
-    return 1 unless defined $scenario->{index_zone} && length $scenario->{index_zone};
+    return 1 unless $scenario->{require_index_zone_ready};
+    return 1 unless defined $scenario->{index_target_zone}
+                    && length $scenario->{index_target_zone};
 
     $stats = fetch_stats($stats_url);
-    $zone = $stats->{zones}->{$scenario->{index_zone}};
+    $zone = $stats->{zones}->{$scenario->{index_target_zone}};
     return 0 unless ref($zone) eq 'HASH';
 
     $state = $zone->{index}->{state_code};
     return defined $state && $state == 2;
+}
+
+sub scenario_index_plan {
+    my ($scenario) = @_;
+    my $mode = $scenario->{index_tracking_mode} || 'disabled';
+    my $zone = defined $scenario->{index_target_zone}
+               ? $scenario->{index_target_zone} : '';
+
+    return {
+        tracking_mode   => $mode,
+        target_zone     => $zone,
+        ready_gate      => $scenario->{require_index_zone_ready} ? 1 : 0,
+        expected_assist => ($mode eq 'wildcard_prefix' || $mode eq 'exact_fanout')
+                           ? 1 : 0,
+        short_label     => index_plan_short_label($mode),
+    };
+}
+
+sub build_index_report {
+    my ($scenario, $before, $after, $metrics_delta, $nginx_log) = @_;
+    my $mode = $scenario->{index_tracking_mode} || 'disabled';
+    my $zone = $scenario->{index_target_zone};
+    my $before_state = zone_index_state_code($before, $zone);
+    my $after_state = zone_index_state_code($after, $zone);
+    my $wildcard_hits = key_index_counter_delta($metrics_delta, 'wildcard_hits');
+    my $exact_fanout = key_index_counter_delta($metrics_delta, 'exact_fanout');
+    my $used_assist = 0;
+    my $expected_assist = ($mode eq 'wildcard_prefix' || $mode eq 'exact_fanout') ? 1 : 0;
+
+    if ($mode eq 'wildcard_prefix' && $wildcard_hits > 0) {
+        $used_assist = 1;
+    }
+
+    if ($mode eq 'exact_fanout' && $exact_fanout > 0) {
+        $used_assist = 1;
+    }
+
+    my $ready_before = defined $before_state && $before_state == 2 ? 1 : 0;
+    my $ready_after = defined $after_state && $after_state == 2 ? 1 : 0;
+    my $ready_degraded = $ready_before && !$ready_after ? 1 : 0;
+    my $assist_missed = $expected_assist && !$used_assist ? 1 : 0;
+
+    my $sqlite_prepare_failed = 0;
+    my $sqlite_locked = 0;
+    my $sqlite_no_table = 0;
+    if (defined $nginx_log && ref($nginx_log->{error_summary}) eq 'HASH') {
+        $sqlite_prepare_failed = $nginx_log->{error_summary}->{sqlite_prepare_failed} || 0;
+        $sqlite_locked = $nginx_log->{error_summary}->{sqlite_locked} || 0;
+        $sqlite_no_table = $nginx_log->{error_summary}->{sqlite_no_table} || 0;
+    }
+
+    return {
+        target_zone                => defined $zone ? $zone : '',
+        target_state_before_code   => defined $before_state ? $before_state : -1,
+        target_state_after_code    => defined $after_state ? $after_state : -1,
+        ready_before               => $ready_before,
+        ready_after                => $ready_after,
+        ready_degraded             => $ready_degraded,
+        expected_assist            => $expected_assist,
+        used_assist                => $used_assist,
+        assist_missed              => $assist_missed,
+        wildcard_prefix_hits_delta => $wildcard_hits,
+        exact_fanout_delta         => $exact_fanout,
+        sqlite_prepare_failed      => $sqlite_prepare_failed,
+        sqlite_locked              => $sqlite_locked,
+        sqlite_no_table            => $sqlite_no_table,
+        short_label                => index_report_short_label($mode, $used_assist,
+                                                               $ready_before,
+                                                               $ready_after),
+    };
+}
+
+sub zone_index_state_code {
+    my ($stats, $zone_name) = @_;
+    my $zones;
+    my $zone;
+    my $index;
+    my $state;
+
+    return undef unless defined $stats && ref($stats) eq 'HASH';
+    return undef unless defined $zone_name && length $zone_name;
+
+    $zones = $stats->{zones};
+    return undef unless ref($zones) eq 'HASH';
+
+    $zone = $zones->{$zone_name};
+    return undef unless ref($zone) eq 'HASH';
+
+    $index = $zone->{index};
+    return undef unless ref($index) eq 'HASH';
+
+    $state = $index->{state_code};
+    return undef unless defined $state && !ref($state)
+                        && $state =~ /^-?(?:\d+(?:\.\d+)?|\.\d+)$/;
+
+    return 0 + $state;
+}
+
+sub key_index_counter_delta {
+    my ($metrics_delta, $counter_name) = @_;
+    my $key_index;
+    my $value;
+
+    return 0 unless defined $metrics_delta && ref($metrics_delta) eq 'HASH';
+
+    $key_index = $metrics_delta->{key_index};
+    return 0 unless ref($key_index) eq 'HASH';
+
+    $value = $key_index->{$counter_name};
+    return 0 unless defined $value && !ref($value)
+                    && $value =~ /^-?(?:\d+(?:\.\d+)?|\.\d+)$/;
+
+    return 0 + $value;
+}
+
+sub index_plan_short_label {
+    my ($mode) = @_;
+
+    return 'off' if $mode eq 'disabled';
+    return 'ready' if $mode eq 'readiness_only';
+    return 'fanout' if $mode eq 'exact_fanout';
+    return 'w-prefix' if $mode eq 'wildcard_prefix';
+
+    return 'other';
+}
+
+sub index_report_short_label {
+    my ($mode, $used_assist, $ready_before, $ready_after) = @_;
+
+    return 'off' if $mode eq 'disabled';
+
+    if ($mode eq 'wildcard_prefix' || $mode eq 'exact_fanout') {
+        return 'assist' if $used_assist;
+        return 'miss-rdy' if $ready_before;
+        return 'miss';
+    }
+
+    return 'ready' if $ready_after;
+    return 'cfg';
 }
 
 sub scenario_ready_requests {
@@ -691,6 +845,7 @@ sub record_nginx_error_log {
     append_text_file("$run_dir/nginx_error.log", $chunk);
 
     my $line_count = scalar grep { length $_ } split /\n/, $chunk;
+    my $error_summary = summarize_nginx_error_chunk($chunk);
 
     log_info("nginx emitted error-log output for $label");
     print_nginx_error_log($label, $chunk);
@@ -698,7 +853,34 @@ sub record_nginx_error_log {
     return {
         file       => $scenario_log,
         line_count => $line_count,
+        error_summary => $error_summary,
     };
+}
+
+sub summarize_nginx_error_chunk {
+    my ($chunk) = @_;
+
+    my $summary = {
+        sqlite_prepare_failed => 0,
+        sqlite_locked => 0,
+        sqlite_no_table => 0,
+    };
+
+    for my $line (split /\n/, $chunk) {
+        if ($line =~ /sqlite prepare failed/) {
+            $summary->{sqlite_prepare_failed}++;
+        }
+
+        if ($line =~ /database is locked/) {
+            $summary->{sqlite_locked}++;
+        }
+
+        if ($line =~ /no such table/) {
+            $summary->{sqlite_no_table}++;
+        }
+    }
+
+    return $summary;
 }
 
 sub consume_nginx_error_log {
