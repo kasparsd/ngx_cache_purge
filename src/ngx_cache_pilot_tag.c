@@ -404,7 +404,8 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
     }
 
     if (ngx_http_cache_tag_flush_pending((ngx_cycle_t *) ngx_cycle) != NGX_OK) {
-        return NGX_ERROR;
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "cache_tag purge continuing after pending-op flush failure");
     }
 
     if (ngx_http_cache_tag_store_get_zone_state(reader, &zone->zone_name, &state,
@@ -474,7 +475,8 @@ ngx_http_cache_tag_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
             rc = ngx_http_cache_tag_queue_enqueue_delete(pmcf,
                     &zone->zone_name, &path[i], r->connection->log);
             if (rc != NGX_OK) {
-                return NGX_ERROR;
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "cache_tag purge continuing after index delete enqueue failure");
             }
         }
     }

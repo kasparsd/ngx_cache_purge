@@ -419,6 +419,8 @@ For tag-based purges, the configured `cache_pilot_purge_mode_header` can switch 
 
 Hard tag purges use asynchronous owner-worker handoff for backend index deletes. A `200` response means the delete work was accepted for processing, not necessarily already persisted yet.
 
+Transient index-maintenance failures during a tag purge are logged and do not by themselves turn an otherwise successful purge into a `500`; the request result reflects whether matching cache files were purged, not whether deferred index cleanup was persisted immediately.
+
 Notes:
 
 - Cache-tag support currently requires Linux.
