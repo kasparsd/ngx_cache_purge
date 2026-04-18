@@ -18,7 +18,7 @@ ngx_http_cache_index_store_configured(ngx_http_cache_pilot_main_conf_t *pmcf) {
 
 ngx_http_cache_index_store_t *
 ngx_http_cache_index_store_open_writer(ngx_http_cache_pilot_main_conf_t *pmcf,
-                                     ngx_log_t *log) {
+                                       ngx_log_t *log) {
     if (pmcf == NULL) {
         return NULL;
     }
@@ -37,7 +37,7 @@ ngx_http_cache_index_store_open_writer(ngx_http_cache_pilot_main_conf_t *pmcf,
 
 ngx_http_cache_index_store_t *
 ngx_http_cache_index_store_open_reader(ngx_http_cache_pilot_main_conf_t *pmcf,
-                                     ngx_log_t *log) {
+                                       ngx_log_t *log) {
     if (pmcf == NULL) {
         return NULL;
     }
@@ -68,19 +68,19 @@ ngx_http_cache_index_store_close(ngx_http_cache_index_store_t *store) {
 
 ngx_int_t
 ngx_http_cache_index_store_begin_batch(ngx_http_cache_index_store_t *store,
-                                     ngx_log_t *log) {
+                                       ngx_log_t *log) {
     return store->ops->begin_batch(store, log);
 }
 
 ngx_int_t
 ngx_http_cache_index_store_commit_batch(ngx_http_cache_index_store_t *store,
-                                      ngx_log_t *log) {
+                                        ngx_log_t *log) {
     return store->ops->commit_batch(store, log);
 }
 
 ngx_int_t
 ngx_http_cache_index_store_rollback_batch(ngx_http_cache_index_store_t *store,
-                                        ngx_log_t *log) {
+        ngx_log_t *log) {
     return store->ops->rollback_batch(store, log);
 }
 
@@ -112,8 +112,8 @@ ngx_http_cache_index_store_collect_paths_by_key_prefix(
 
 ngx_int_t
 ngx_http_cache_index_store_delete_file(ngx_http_cache_index_store_t *store,
-                                     ngx_str_t *zone_name, ngx_str_t *path,
-                                     ngx_log_t *log) {
+                                       ngx_str_t *zone_name, ngx_str_t *path,
+                                       ngx_log_t *log) {
     return store->ops->delete_file(store, zone_name, path, log);
 }
 
@@ -127,25 +127,25 @@ ngx_http_cache_index_store_collect_paths_by_tags(ngx_http_cache_index_store_t *s
 
 ngx_int_t
 ngx_http_cache_index_store_get_zone_state(ngx_http_cache_index_store_t *store,
-                                        ngx_str_t *zone_name,
-                                        ngx_http_cache_index_zone_state_t *state,
-                                        ngx_log_t *log) {
+        ngx_str_t *zone_name,
+        ngx_http_cache_index_zone_state_t *state,
+        ngx_log_t *log) {
     return store->ops->get_zone_state(store, zone_name, state, log);
 }
 
 ngx_int_t
 ngx_http_cache_index_store_set_zone_state(ngx_http_cache_index_store_t *store,
-                                        ngx_str_t *zone_name,
-                                        ngx_http_cache_index_zone_state_t *state,
-                                        ngx_log_t *log) {
+        ngx_str_t *zone_name,
+        ngx_http_cache_index_zone_state_t *state,
+        ngx_log_t *log) {
     return store->ops->set_zone_state(store, zone_name, state, log);
 }
 
 ngx_int_t
 ngx_http_cache_index_store_process_file(ngx_http_cache_index_store_t *store,
-                                      ngx_str_t *zone_name, ngx_str_t *path,
-                                      ngx_array_t *headers,
-                                      ngx_log_t *log) {
+                                        ngx_str_t *zone_name, ngx_str_t *path,
+                                        ngx_array_t *headers,
+                                        ngx_log_t *log) {
     ngx_pool_t   *pool;
     ngx_array_t  *tags;
     ngx_str_t     cache_key_text;
@@ -164,8 +164,8 @@ ngx_http_cache_index_store_process_file(ngx_http_cache_index_store_t *store,
         /* No configured tag headers: still parse for KEY: so the key index
          * is populated even when tag indexing is not in use. */
         if (ngx_http_cache_index_parse_file(pool, path, NULL, &tags,
-                                          &cache_key_text, &mtime, &size,
-                                          log) != NGX_OK) {
+                                            &cache_key_text, &mtime, &size,
+                                            log) != NGX_OK) {
             ngx_destroy_pool(pool);
             return ngx_http_cache_index_store_delete_file(store, zone_name, path,
                     log);
@@ -178,8 +178,8 @@ ngx_http_cache_index_store_process_file(ngx_http_cache_index_store_t *store,
     }
 
     if (ngx_http_cache_index_parse_file(pool, path, headers, &tags,
-                                      &cache_key_text, &mtime, &size,
-                                      log) != NGX_OK) {
+                                        &cache_key_text, &mtime, &size,
+                                        log) != NGX_OK) {
         ngx_destroy_pool(pool);
         return ngx_http_cache_index_store_delete_file(store, zone_name, path, log);
     }
@@ -193,8 +193,8 @@ ngx_http_cache_index_store_process_file(ngx_http_cache_index_store_t *store,
 
 ngx_int_t
 ngx_http_cache_index_store_runtime_init(ngx_cycle_t *cycle,
-                                      ngx_http_cache_pilot_main_conf_t *pmcf,
-                                      ngx_flag_t owner) {
+                                        ngx_http_cache_pilot_main_conf_t *pmcf,
+                                        ngx_flag_t owner) {
     ngx_memzero(&ngx_http_cache_index_store_runtime,
                 sizeof(ngx_http_cache_index_store_runtime));
 
@@ -227,7 +227,7 @@ ngx_http_cache_index_store_writer(void) {
 
 ngx_http_cache_index_store_t *
 ngx_http_cache_index_store_reader(ngx_http_cache_pilot_main_conf_t *pmcf,
-                                ngx_log_t *log) {
+                                  ngx_log_t *log) {
     if (ngx_http_cache_index_store_runtime.reader != NULL) {
         return ngx_http_cache_index_store_runtime.reader;
     }
@@ -240,7 +240,7 @@ ngx_http_cache_index_store_reader(ngx_http_cache_pilot_main_conf_t *pmcf,
 
 ngx_int_t
 ngx_http_cache_index_extract_tokens(ngx_pool_t *pool, u_char *value, size_t len,
-                                  ngx_array_t *tags, ngx_log_t *log) {
+                                    ngx_array_t *tags, ngx_log_t *log) {
     size_t  i, start, end;
 
     i = 0;
@@ -270,7 +270,7 @@ ngx_http_cache_index_extract_tokens(ngx_pool_t *pool, u_char *value, size_t len,
             }
 
             if (ngx_http_cache_index_push_unique(pool, tags, value + start,
-                                               end - start) != NGX_OK) {
+                                                 end - start) != NGX_OK) {
                 return NGX_ERROR;
             }
         }
@@ -281,7 +281,7 @@ ngx_http_cache_index_extract_tokens(ngx_pool_t *pool, u_char *value, size_t len,
 
 static ngx_int_t
 ngx_http_cache_index_push_unique(ngx_pool_t *pool, ngx_array_t *tags,
-                               u_char *data, size_t len) {
+                                 u_char *data, size_t len) {
     ngx_str_t   *tag;
     ngx_uint_t   i;
 
@@ -327,9 +327,9 @@ ngx_http_cache_index_path_known(ngx_str_t *path) {
 
 static ngx_int_t
 ngx_http_cache_index_parse_file(ngx_pool_t *pool, ngx_str_t *path,
-                              ngx_array_t *headers, ngx_array_t **tags,
-                              ngx_str_t *cache_key_text,
-                              time_t *mtime, off_t *size, ngx_log_t *log) {
+                                ngx_array_t *headers, ngx_array_t **tags,
+                                ngx_str_t *cache_key_text,
+                                time_t *mtime, off_t *size, ngx_log_t *log) {
     static u_char        key_hdr[] = "KEY:";
     ngx_file_info_t      fi;
     ngx_file_t           file;
@@ -437,8 +437,8 @@ ngx_http_cache_index_parse_file(ngx_pool_t *pool, ngx_str_t *path,
             }
 
             if (ngx_http_cache_index_extract_tokens(pool, buf + value_start,
-                                                  line_end - value_start,
-                                                  result, log) != NGX_OK) {
+                                                    line_end - value_start,
+                                                    result, log) != NGX_OK) {
                 return NGX_ERROR;
             }
         }

@@ -58,8 +58,8 @@ ngx_http_cache_index_store_conf(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) 
 
 static char *
 ngx_http_cache_index_store_conf_redis(ngx_conf_t *cf,
-                                    ngx_http_cache_pilot_main_conf_t *pmcf,
-                                    ngx_str_t *value) {
+                                      ngx_http_cache_pilot_main_conf_t *pmcf,
+                                      ngx_str_t *value) {
     ngx_uint_t  i;
     u_char     *colon;
     ngx_int_t   port, db;
@@ -266,8 +266,8 @@ ngx_http_cache_index_request_headers(ngx_http_request_t *r, ngx_array_t **tags) 
             }
 
             if (ngx_http_cache_index_extract_tokens(r->pool, header[i].value.data,
-                                                  header[i].value.len, result,
-                                                  r->connection->log)
+                                                    header[i].value.len, result,
+                                                    r->connection->log)
                     != NGX_OK) {
                 return NGX_ERROR;
             }
@@ -281,7 +281,7 @@ ngx_http_cache_index_request_headers(ngx_http_request_t *r, ngx_array_t **tags) 
 
 ngx_int_t
 ngx_http_cache_index_register_cache(ngx_conf_t *cf, ngx_http_file_cache_t *cache,
-                                  ngx_array_t *headers) {
+                                    ngx_array_t *headers) {
     ngx_http_cache_pilot_main_conf_t  *pmcf;
     ngx_http_cache_index_zone_t         *zones, *zone;
     ngx_uint_t                         i;
@@ -357,7 +357,7 @@ ngx_http_cache_index_headers_equal(ngx_array_t *left, ngx_array_t *right) {
 
 ngx_int_t
 ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
-                         ngx_array_t *tags) {
+                           ngx_array_t *tags) {
     ngx_http_conf_ctx_t              *http_ctx;
     ngx_http_cache_pilot_main_conf_t *pmcf;
     ngx_http_cache_pilot_loc_conf_t  *cplcf;
@@ -435,7 +435,7 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
         }
 
         rc = ngx_http_cache_index_bootstrap_zone(writer, zone,
-                                               (ngx_cycle_t *) ngx_cycle);
+                (ngx_cycle_t *) ngx_cycle);
         if (!ngx_http_cache_index_is_owner()) {
             ngx_http_cache_index_store_close(writer);
         }
@@ -487,7 +487,7 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
 
 ngx_int_t
 ngx_http_cache_index_process_init(ngx_cycle_t *cycle,
-                                ngx_http_cache_pilot_main_conf_t *pmcf) {
+                                  ngx_http_cache_pilot_main_conf_t *pmcf) {
 #if !(NGX_LINUX)
     (void) cycle;
     (void) pmcf;

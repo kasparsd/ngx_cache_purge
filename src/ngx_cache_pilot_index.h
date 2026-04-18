@@ -209,9 +209,9 @@ typedef struct {
 extern ngx_module_t ngx_http_cache_pilot_module;
 
 char *ngx_http_cache_index_store_conf(ngx_conf_t *cf, ngx_command_t *cmd,
-                                    void *conf);
-char *ngx_http_cache_index_headers_conf(ngx_conf_t *cf, ngx_command_t *cmd,
                                       void *conf);
+char *ngx_http_cache_index_headers_conf(ngx_conf_t *cf, ngx_command_t *cmd,
+                                        void *conf);
 ngx_flag_t ngx_http_cache_index_location_enabled(
     ngx_http_cache_pilot_loc_conf_t *cplcf);
 ngx_int_t ngx_http_cache_index_request_headers(ngx_http_request_t *r,
@@ -223,8 +223,8 @@ ngx_int_t ngx_http_cache_index_register_cache(ngx_conf_t *cf,
         ngx_http_file_cache_t *cache,
         ngx_array_t *headers);
 ngx_int_t ngx_http_cache_index_purge(ngx_http_request_t *r,
-                                   ngx_http_file_cache_t *cache,
-                                   ngx_array_t *tags);
+                                     ngx_http_file_cache_t *cache,
+                                     ngx_array_t *tags);
 ngx_int_t ngx_http_cache_index_process_init(ngx_cycle_t *cycle,
         ngx_http_cache_pilot_main_conf_t *pmcf);
 void ngx_http_cache_index_process_exit(void);

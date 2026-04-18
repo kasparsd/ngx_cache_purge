@@ -143,7 +143,7 @@ static const ngx_http_cache_index_store_ops_t ngx_http_cache_index_store_redis_o
 
 ngx_http_cache_index_store_t *
 ngx_http_cache_index_store_redis_open(ngx_http_cache_pilot_main_conf_t *pmcf,
-                                    ngx_flag_t readonly, ngx_log_t *log) {
+                                      ngx_flag_t readonly, ngx_log_t *log) {
     ngx_http_cache_index_store_t  *store;
 
     if (pmcf == NULL || pmcf->backend != NGX_HTTP_CACHE_TAG_BACKEND_REDIS) {
@@ -941,7 +941,7 @@ ngx_http_cache_index_store_redis_ensure_connected(ngx_http_cache_index_store_t *
 
 static ngx_int_t
 ngx_http_cache_index_store_redis_connect(ngx_http_cache_index_store_t *store,
-                                       ngx_log_t *log) {
+        ngx_log_t *log) {
     ngx_http_cache_index_redis_conf_t *conf;
     ngx_connection_t                *conn;
     ngx_str_t                        auth_args[2];
@@ -1381,7 +1381,7 @@ ngx_http_cache_index_store_redis_read_exact(ngx_http_cache_index_store_t *store,
 
 static ngx_int_t
 ngx_http_cache_index_store_redis_send_all(ngx_http_cache_index_store_t *store,
-                                        u_char *buf, size_t len, ngx_log_t *log) {
+        u_char *buf, size_t len, ngx_log_t *log) {
     ssize_t  n;
     size_t   off;
 
@@ -1401,8 +1401,8 @@ ngx_http_cache_index_store_redis_send_all(ngx_http_cache_index_store_t *store,
 
 static ngx_int_t
 ngx_http_cache_index_store_redis_make_key(ngx_pool_t *pool, ngx_str_t *prefix,
-                                        ngx_str_t *part1, ngx_str_t *part2,
-                                        ngx_str_t *out) {
+        ngx_str_t *part1, ngx_str_t *part2,
+        ngx_str_t *out) {
     size_t  len;
     u_char *p;
 

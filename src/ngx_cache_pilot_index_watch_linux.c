@@ -50,7 +50,7 @@ static ngx_int_t ngx_http_cache_index_apply_pending_ops(
 
 ngx_int_t
 ngx_http_cache_index_queue_init_conf(ngx_conf_t *cf,
-                                   ngx_http_cache_pilot_main_conf_t *pmcf) {
+                                     ngx_http_cache_pilot_main_conf_t *pmcf) {
     static ngx_str_t  queue_name = ngx_string("ngx_cache_pilot_tag_queue");
     ngx_http_cache_index_queue_ctx_t  *ctx;
 
@@ -83,8 +83,8 @@ ngx_http_cache_index_is_owner(void) {
 
 ngx_int_t
 ngx_http_cache_index_queue_enqueue_delete(ngx_http_cache_pilot_main_conf_t *pmcf,
-                                        ngx_str_t *zone_name, ngx_str_t *path,
-                                        ngx_log_t *log) {
+        ngx_str_t *zone_name, ngx_str_t *path,
+        ngx_log_t *log) {
     ngx_http_cache_index_queue_ctx_t     *ctx;
     ngx_http_cache_index_queue_shctx_t   *sh;
     ngx_http_cache_index_queue_entry_t   *entry;
@@ -105,7 +105,7 @@ ngx_http_cache_index_queue_enqueue_delete(ngx_http_cache_pilot_main_conf_t *pmcf
                       "cache_tag queue entry too large for zone \"%V\" path \"%V\"",
                       zone_name, path);
         ngx_http_cache_index_queue_log_stats(log, NGX_LOG_WARN,
-                                           "cache_tag queue rejected delete");
+                                             "cache_tag queue rejected delete");
         return NGX_DECLINED;
     }
 
@@ -115,7 +115,7 @@ ngx_http_cache_index_queue_enqueue_delete(ngx_http_cache_pilot_main_conf_t *pmcf
                       "cache_tag queue not initialized for zone \"%V\" path \"%V\"",
                       zone_name, path);
         ngx_http_cache_index_queue_log_stats(log, NGX_LOG_WARN,
-                                           "cache_tag queue rejected delete");
+                                             "cache_tag queue rejected delete");
         return NGX_DECLINED;
     }
 
@@ -132,7 +132,7 @@ ngx_http_cache_index_queue_enqueue_delete(ngx_http_cache_pilot_main_conf_t *pmcf
                       "cache_tag queue full, dropping delete for zone \"%V\" path \"%V\"",
                       zone_name, path);
         ngx_http_cache_index_queue_log_stats(log, NGX_LOG_WARN,
-                                           "cache_tag queue rejected delete");
+                                             "cache_tag queue rejected delete");
         return NGX_DECLINED;
     }
 
@@ -180,8 +180,8 @@ ngx_http_cache_index_zone_bootstrap_complete(ngx_http_file_cache_t *cache) {
 
 ngx_int_t
 ngx_http_cache_index_bootstrap_zone(ngx_http_cache_index_store_t *store,
-                                  ngx_http_cache_index_zone_t *zone,
-                                  ngx_cycle_t *cycle) {
+                                    ngx_http_cache_index_zone_t *zone,
+                                    ngx_cycle_t *cycle) {
     ngx_http_cache_index_zone_state_t  state;
 
     if (zone == NULL || zone->cache == NULL || zone->cache->path == NULL) {
@@ -222,7 +222,7 @@ ngx_http_cache_index_bootstrap_zone(ngx_http_cache_index_store_t *store,
 
 static void
 ngx_http_cache_index_zone_insert(ngx_rbtree_node_t *temp, ngx_rbtree_node_t *node,
-                               ngx_rbtree_node_t *sentinel) {
+                                 ngx_rbtree_node_t *sentinel) {
     for (;;) {
         if (node->key < temp->key) {
             if (temp->left == sentinel) {
@@ -267,7 +267,7 @@ ngx_http_cache_index_zone_insert(ngx_rbtree_node_t *temp, ngx_rbtree_node_t *nod
 
 static void
 ngx_http_cache_index_watch_insert(ngx_rbtree_node_t *temp, ngx_rbtree_node_t *node,
-                                ngx_rbtree_node_t *sentinel) {
+                                  ngx_rbtree_node_t *sentinel) {
     for (;;) {
         if (node->key < temp->key) {
             if (temp->left == sentinel) {
@@ -392,7 +392,7 @@ ngx_http_cache_index_remove_watch(int wd) {
 
 static ngx_int_t
 ngx_http_cache_index_add_watch(ngx_http_cache_index_zone_t *zone, ngx_str_t *path,
-                             ngx_cycle_t *cycle) {
+                               ngx_cycle_t *cycle) {
     ngx_http_cache_index_watch_t  *watch;
     int                          wd;
 
@@ -441,11 +441,11 @@ ngx_http_cache_index_add_watch(ngx_http_cache_index_zone_t *zone, ngx_str_t *pat
 
 static ngx_int_t
 ngx_http_cache_index_add_watch_recursive(ngx_http_cache_index_store_t *store,
-                                       ngx_http_cache_index_zone_t *zone,
-                                       ngx_str_t *path, ngx_cycle_t *cycle,
-                                       ngx_uint_t index_mode,
-                                       ngx_array_t *pending_ops,
-                                       time_t min_mtime) {
+        ngx_http_cache_index_zone_t *zone,
+        ngx_str_t *path, ngx_cycle_t *cycle,
+        ngx_uint_t index_mode,
+        ngx_array_t *pending_ops,
+        time_t min_mtime) {
     DIR            *dir;
     struct dirent  *entry;
     ngx_str_t       child;
@@ -522,7 +522,7 @@ ngx_http_cache_index_add_watch_recursive(ngx_http_cache_index_store_t *store,
  * string allocation.  Returns NGX_OK even if no events were available. */
 static ngx_int_t
 ngx_http_cache_index_read_inotify(ngx_pool_t *pool, ngx_array_t *pending_ops,
-                                ngx_cycle_t *cycle) {
+                                  ngx_cycle_t *cycle) {
     u_char                      buf[8192];
     ssize_t                     n;
     size_t                      offset;
@@ -584,14 +584,14 @@ ngx_http_cache_index_read_inotify(ngx_pool_t *pool, ngx_array_t *pending_ops,
                     } else if (event->mask
                                & (IN_CREATE|IN_MOVED_TO|IN_CLOSE_WRITE)) {
                         if (ngx_http_cache_index_pending_op_set(pool, pending_ops,
-                                                              &watch->zone_name, watch->cache, &path,
-                                                              NGX_HTTP_CACHE_TAG_OP_REPLACE) != NGX_OK) {
+                                                                &watch->zone_name, watch->cache, &path,
+                                                                NGX_HTTP_CACHE_TAG_OP_REPLACE) != NGX_OK) {
                             return NGX_ERROR;
                         }
                     } else if (event->mask & (IN_DELETE|IN_MOVED_FROM)) {
                         if (ngx_http_cache_index_pending_op_set(pool, pending_ops,
-                                                              &watch->zone_name, watch->cache, &path,
-                                                              NGX_HTTP_CACHE_TAG_OP_DELETE) != NGX_OK) {
+                                                                &watch->zone_name, watch->cache, &path,
+                                                                NGX_HTTP_CACHE_TAG_OP_DELETE) != NGX_OK) {
                             return NGX_ERROR;
                         }
                     }
@@ -807,7 +807,7 @@ ngx_http_cache_index_bootstrap_thread(void *data, ngx_log_t *log) {
         }
 
         if (ngx_http_cache_index_bootstrap_zone(writer, &zone[i],
-                                              ctx->cycle) != NGX_OK) {
+                                                ctx->cycle) != NGX_OK) {
             ctx->rc = NGX_ERROR;
             ngx_http_cache_index_store_close(writer);
             return;
@@ -848,7 +848,7 @@ ngx_http_cache_index_bootstrap_complete(ngx_event_t *ev) {
 
 ngx_int_t
 ngx_http_cache_index_init_runtime(ngx_cycle_t *cycle,
-                                ngx_http_cache_pilot_main_conf_t *pmcf) {
+                                  ngx_http_cache_pilot_main_conf_t *pmcf) {
     ngx_http_cache_index_zone_t        *zone;
     ngx_http_cache_index_store_t       *writer;
     ngx_http_cache_index_zone_state_t   state;
@@ -874,7 +874,7 @@ ngx_http_cache_index_init_runtime(ngx_cycle_t *cycle,
                 ngx_process == NGX_PROCESS_WORKER && ngx_worker == 0);
     ngx_http_cache_index_watch_runtime.cycle = cycle;
     ngx_http_cache_index_queue_ctx = pmcf->queue_zone != NULL
-                                   ? pmcf->queue_zone->data : NULL;
+                                     ? pmcf->queue_zone->data : NULL;
 
     if (ngx_http_cache_index_runtime_init_zones(cycle, pmcf) != NGX_OK) {
         return NGX_ERROR;
@@ -1041,8 +1041,8 @@ ngx_http_cache_index_shutdown_runtime(void) {
 
     if (ngx_http_cache_index_queue_ctx != NULL) {
         ngx_http_cache_index_queue_log_stats(ngx_http_cache_index_watch_runtime.cycle->log,
-                                           NGX_LOG_NOTICE,
-                                           "cache_tag queue shutdown summary");
+                                             NGX_LOG_NOTICE,
+                                             "cache_tag queue shutdown summary");
     }
 
     ngx_http_cache_index_queue_ctx = NULL;
@@ -1053,7 +1053,7 @@ ngx_http_cache_index_shutdown_runtime(void) {
 
 static void
 ngx_http_cache_index_queue_log_stats(ngx_log_t *log, ngx_uint_t level,
-                                   const char *message) {
+                                     const char *message) {
     ngx_uint_t                        dropped;
     ngx_http_cache_index_queue_ctx_t  *ctx;
 
@@ -1112,7 +1112,7 @@ ngx_http_cache_index_queue_init_zone(ngx_shm_zone_t *shm_zone, void *data) {
 
 static ngx_int_t
 ngx_http_cache_index_join_path(ngx_pool_t *pool, ngx_str_t *base, const char *name,
-                             ngx_str_t *out) {
+                               ngx_str_t *out) {
     size_t  name_len;
 
     name_len = ngx_strlen(name);
@@ -1129,7 +1129,7 @@ ngx_http_cache_index_join_path(ngx_pool_t *pool, ngx_str_t *base, const char *na
 
 static ngx_int_t
 ngx_http_cache_index_runtime_init_zones(ngx_cycle_t *cycle,
-                                      ngx_http_cache_pilot_main_conf_t *pmcf) {
+                                        ngx_http_cache_pilot_main_conf_t *pmcf) {
     ngx_http_cache_index_zone_t        *zone;
     ngx_http_cache_index_zone_index_t  *index;
     ngx_uint_t                        i;
@@ -1154,9 +1154,9 @@ ngx_http_cache_index_runtime_init_zones(ngx_cycle_t *cycle,
 
 static ngx_int_t
 ngx_http_cache_index_pending_op_set(ngx_pool_t *pool, ngx_array_t *pending_ops,
-                                  ngx_str_t *zone_name,
-                                  ngx_http_file_cache_t *cache,
-                                  ngx_str_t *path, ngx_uint_t operation) {
+                                    ngx_str_t *zone_name,
+                                    ngx_http_file_cache_t *cache,
+                                    ngx_str_t *path, ngx_uint_t operation) {
     ngx_http_cache_index_pending_op_t  *op;
     ngx_uint_t                        i;
 
@@ -1205,7 +1205,7 @@ ngx_http_cache_index_pending_op_set(ngx_pool_t *pool, ngx_array_t *pending_ops,
 
 static ngx_int_t
 ngx_http_cache_index_queue_drain(ngx_pool_t *pool, ngx_array_t *pending_ops,
-                               ngx_log_t *log) {
+                                 ngx_log_t *log) {
     ngx_http_cache_index_queue_shctx_t  *sh;
     ngx_http_cache_index_queue_entry_t  *entry, *copy;
     ngx_array_t                       *entries;
@@ -1229,7 +1229,7 @@ ngx_http_cache_index_queue_drain(ngx_pool_t *pool, ngx_array_t *pending_ops,
         ngx_log_error(NGX_LOG_ERR, log, 0,
                       "cache_tag queue drain failed while allocating entry copy buffer");
         ngx_http_cache_index_queue_log_stats(log, NGX_LOG_ERR,
-                                           "cache_tag queue drain failed");
+                                             "cache_tag queue drain failed");
         return NGX_ERROR;
     }
 
@@ -1241,7 +1241,7 @@ ngx_http_cache_index_queue_drain(ngx_pool_t *pool, ngx_array_t *pending_ops,
             ngx_log_error(NGX_LOG_ERR, log, 0,
                           "cache_tag queue drain failed while buffering pending operations");
             ngx_http_cache_index_queue_log_stats(log, NGX_LOG_ERR,
-                                               "cache_tag queue drain failed");
+                                                 "cache_tag queue drain failed");
             return NGX_ERROR;
         }
 
@@ -1261,11 +1261,11 @@ ngx_http_cache_index_queue_drain(ngx_pool_t *pool, ngx_array_t *pending_ops,
         path.len = entry[i].path_len;
 
         if (ngx_http_cache_index_pending_op_set(pool, pending_ops, &zone_name,
-                                              NULL, &path, entry[i].operation) != NGX_OK) {
+                                                NULL, &path, entry[i].operation) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, log, 0,
                           "cache_tag queue drain failed while copying pending operations");
             ngx_http_cache_index_queue_log_stats(log, NGX_LOG_ERR,
-                                               "cache_tag queue drain failed");
+                                                 "cache_tag queue drain failed");
             return NGX_ERROR;
         }
     }
@@ -1277,7 +1277,7 @@ ngx_http_cache_index_queue_drain(ngx_pool_t *pool, ngx_array_t *pending_ops,
 
 static ngx_int_t
 ngx_http_cache_index_apply_pending_ops(ngx_http_cache_index_store_t *store,
-                                     ngx_array_t *pending_ops, ngx_log_t *log) {
+                                       ngx_array_t *pending_ops, ngx_log_t *log) {
     ngx_http_cache_index_pending_op_t  *op;
     ngx_http_cache_index_zone_t        *zone;
     ngx_uint_t                        i;
@@ -1327,7 +1327,7 @@ ngx_http_cache_index_apply_pending_ops(ngx_http_cache_index_store_t *store,
 
 static void
 ngx_http_cache_index_zone_state_cache_set(ngx_http_file_cache_t *cache,
-                                        ngx_http_cache_index_zone_state_t *state) {
+        ngx_http_cache_index_zone_state_t *state) {
     ngx_http_cache_index_zone_index_t *index;
 
     if (cache == NULL || state == NULL) {

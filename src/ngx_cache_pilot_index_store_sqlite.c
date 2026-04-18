@@ -64,7 +64,7 @@ static const ngx_http_cache_index_store_ops_t ngx_http_cache_index_store_sqlite_
 
 ngx_http_cache_index_store_t *
 ngx_http_cache_index_store_sqlite_open(ngx_http_cache_pilot_main_conf_t *pmcf,
-                                     ngx_flag_t readonly, ngx_log_t *log) {
+                                       ngx_flag_t readonly, ngx_log_t *log) {
     ngx_http_cache_index_store_t  *store;
 
     if (pmcf == NULL || pmcf->sqlite_path.len == 0) {
@@ -706,7 +706,7 @@ ngx_http_cache_index_store_sqlite_open_one(ngx_str_t *path, int flags,
 
 static int
 ngx_http_cache_index_store_sqlite_step(sqlite3_stmt *stmt, sqlite3 *db,
-                                     ngx_log_t *log, const char *action) {
+                                       ngx_log_t *log, const char *action) {
     ngx_uint_t  attempt;
     int         rc;
 
@@ -732,7 +732,7 @@ ngx_http_cache_index_store_sqlite_step(sqlite3_stmt *stmt, sqlite3 *db,
 
 static ngx_int_t
 ngx_http_cache_index_store_sqlite_prepare(ngx_http_cache_index_store_t *store,
-                                        ngx_log_t *log) {
+        ngx_log_t *log) {
     if (ngx_http_cache_index_store_sqlite_prepare_one(store->u.sqlite.db,
             &store->u.sqlite.stmt.delete_file,
             "DELETE FROM cache_tag_entries WHERE zone = ?1 AND path = ?2",
@@ -820,7 +820,7 @@ ngx_http_cache_index_store_sqlite_prepare_one(sqlite3 *db, sqlite3_stmt **stmt,
 
 static ngx_int_t
 ngx_http_cache_index_store_sqlite_exec(ngx_http_cache_index_store_t *store,
-                                     const char *sql, ngx_log_t *log) {
+                                       const char *sql, ngx_log_t *log) {
     char  *errmsg;
 
     errmsg = NULL;
