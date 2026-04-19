@@ -440,7 +440,7 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
     if (ngx_http_cache_index_store_get_zone_state(reader, &zone->zone_name, &state,
             r->connection->log) != NGX_OK) {
         return ngx_http_cache_index_purge_finalize(NGX_ERROR, reader,
-                                                   close_reader);
+                close_reader);
     }
 
     if (state.bootstrap_complete) {
@@ -453,7 +453,7 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
             &zone->zone_name, tags, &paths, r->connection->log)
             != NGX_OK) {
         return ngx_http_cache_index_purge_finalize(NGX_ERROR, reader,
-                                                   close_reader);
+                close_reader);
     }
 
     if (paths->nelts == 0 && !state.bootstrap_complete && cache->path != NULL) {
@@ -465,7 +465,7 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
         }
         if (writer == NULL) {
             return ngx_http_cache_index_purge_finalize(NGX_ERROR, reader,
-                                                       close_reader);
+                    close_reader);
         }
 
         rc = ngx_http_cache_index_bootstrap_zone(writer, zone,
@@ -477,20 +477,20 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
 
         if (rc != NGX_OK) {
             return ngx_http_cache_index_purge_finalize(NGX_ERROR, reader,
-                                                       close_reader);
+                    close_reader);
         }
 
         if (ngx_http_cache_index_store_get_zone_state(reader, &zone->zone_name,
                 &state, r->connection->log) != NGX_OK) {
             return ngx_http_cache_index_purge_finalize(NGX_ERROR, reader,
-                                                       close_reader);
+                    close_reader);
         }
 
         if (ngx_http_cache_index_store_collect_paths_by_tags(reader, r->pool,
                 &zone->zone_name, tags, &paths, r->connection->log)
                 != NGX_OK) {
             return ngx_http_cache_index_purge_finalize(NGX_ERROR, reader,
-                                                       close_reader);
+                    close_reader);
         }
     }
 
@@ -503,7 +503,7 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
             purged++;
         } else if (rc != NGX_DECLINED) {
             return ngx_http_cache_index_purge_finalize(NGX_ERROR, reader,
-                                                       close_reader);
+                    close_reader);
         }
 
         if (rc == NGX_OK && soft) {

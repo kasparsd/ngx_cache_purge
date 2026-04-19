@@ -84,8 +84,7 @@ ngx_http_cache_index_store_sqlite_open(ngx_http_cache_pilot_main_conf_t *pmcf,
              * failure before the tables are visible. */
             sqlite3_busy_timeout(store->u.sqlite.db, 5000);
             if (ngx_http_cache_index_store_sqlite_prepare(store, log, 0)
-                    == NGX_OK)
-            {
+                    == NGX_OK) {
                 sqlite3_busy_timeout(store->u.sqlite.db, 0);
                 return store;
             }

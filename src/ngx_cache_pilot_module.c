@@ -2187,7 +2187,7 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
 
         pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
         NGX_CACHE_PILOT_METRICS_INC(ngx_http_cache_pilot_metrics_ctx(pmcf_m),
-                        purges_exact_hard);
+                                    purges_exact_hard);
         fanout_used = 0;
 
         /* Key-index fan-out: purge Vary variants sharing the same cache key. */
