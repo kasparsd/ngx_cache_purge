@@ -5,8 +5,8 @@ use Test::Nginx::Socket;
 
 repeat_each(1);
 
-# This file currently emits 68 assertions in total.
-plan tests => repeat_each() * 68;
+# This file currently emits 80 assertions in total.
+plan tests => repeat_each() * 80;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_stats_cache  keys_zone=stats_test:10m;
@@ -282,6 +282,51 @@ qr/\[(warn|error|crit|alert|emerg)\]/
     'root',
     'nginx_cache_pilot_zone_entries\{zone="stats_test",state="(valid|expired)"\} [1-9]',
 ]
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 17: cold state is reported for zone snapshots in JSON
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request
+GET /_stats
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: "stats_test":\{.*"cold":(true|false).*,"entries":\{"total":[0-9]+,"valid":[0-9]+,"expired":[0-9]+,"updating":[0-9]+\}
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 18: cold state is reported for zone snapshots in Prometheus
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request
+GET /_stats?format=prometheus
+--- error_code: 200
+--- response_headers
+Content-Type: text/plain; version=0.0.4; charset=utf-8
+--- response_body_like: nginx_cache_pilot_zone_cold\{zone="stats_test"\} [01]
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 19: Prometheus exposes all entry state variants
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request
+GET /_stats?format=prometheus
+--- error_code: 200
+--- response_headers
+Content-Type: text/plain; version=0.0.4; charset=utf-8
+--- response_body_like: (?s)nginx_cache_pilot_zone_entries\{zone="stats_test",state="valid"\} [0-9]+.*nginx_cache_pilot_zone_entries\{zone="stats_test",state="expired"\} [0-9]+.*nginx_cache_pilot_zone_entries\{zone="stats_test",state="updating"\} [0-9]+
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
