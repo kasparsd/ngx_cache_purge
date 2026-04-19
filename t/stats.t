@@ -5,7 +5,6 @@ use Test::Nginx::Socket;
 
 repeat_each(1);
 
-# This file currently emits 80 assertions in total.
 plan tests => repeat_each() * 80;
 
 our $http_config = <<'_EOC_';
@@ -40,6 +39,7 @@ our $config = <<'_EOC_';
     location = /_stats_filtered {
         cache_pilot_stats stats_test;
     }
+
 _EOC_
 
 worker_connections(128);
