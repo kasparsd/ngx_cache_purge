@@ -36,6 +36,7 @@ our $config = <<'_EOC_';
         add_header         X-Cache-Status $upstream_cache_status;
         proxy_cache_purge  $purge_method;
         cache_pilot_purge_mode_header X-Purge-Mode;
+        cache_pilot_index on;
     }
 
     location = /origin/vary {
@@ -170,6 +171,21 @@ GET /proxy/vary
 --- response_headers
 X-Cache-Status: HIT
 --- response_body: vary-a
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 8: redis stats report ready zone and wildcard key-index usage
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request
+GET /_stats
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: (?s)"key_cache_redis_test":\{.*"index":\{"state":"ready","state_code":2,"backend":"redis".*"key_index":\{[^}]*"wildcard_hits":[1-9]
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/

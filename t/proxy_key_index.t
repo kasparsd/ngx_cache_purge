@@ -182,7 +182,69 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 8: exact purge fans out across vary variants via key index
+=== TEST 8: stats report zone ready after bootstrap purge
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request
+GET /_stats
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: (?s)"key_cache_test":\{.*"index":\{"state":"ready","state_code":2,"backend":"sqlite"
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 9: exact soft purge still targets one direct key on indexed zone
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- more_headers
+X-Purge-Mode: soft
+--- request
+PURGE /proxy/prefix-a
+--- error_code: 200
+--- response_headers
+Content-Type: text/html
+--- response_body_like: Successful purge
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 10: direct exact soft purge expires the targeted prefix entry
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request
+GET /proxy/prefix-a
+--- error_code: 200
+--- response_headers
+X-Cache-Status: EXPIRED
+--- response_body: prefix-a
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 11: direct exact soft purge leaves sibling key untouched
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request
+GET /proxy/prefix-b
+--- error_code: 200
+--- response_headers
+X-Cache-Status: HIT
+--- response_body: prefix-b
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 12: exact purge fans out across vary variants via key index
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -199,7 +261,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 9: first vary variant is a miss after exact fan-out purge
+=== TEST 13: first vary variant is a miss after exact fan-out purge
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -216,7 +278,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 10: second vary variant is a miss after exact fan-out purge
+=== TEST 14: second vary variant is a miss after exact fan-out purge
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -233,7 +295,22 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 11: exact soft purge fans out across vary variants via key index
+=== TEST 15: stats report exact fanout key-index usage
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request
+GET /_stats
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: (?s)"key_index":\{[^}]*"exact_fanout":[1-9]
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 16: exact soft purge fans out across vary variants via key index
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -251,7 +328,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 12: first vary variant is expired after exact soft fan-out purge
+=== TEST 17: first vary variant is expired after exact soft fan-out purge
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -268,7 +345,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 13: second vary variant is expired after exact soft fan-out purge
+=== TEST 18: second vary variant is expired after exact soft fan-out purge
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -285,7 +362,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 14: wildcard purge removes prefix entries via key index
+=== TEST 19: wildcard purge removes prefix entries via key index
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- request
@@ -300,7 +377,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 15: first prefix entry is a miss after wildcard key-index purge
+=== TEST 20: first prefix entry is a miss after wildcard key-index purge
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- request
@@ -315,7 +392,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 16: second prefix entry is a miss after wildcard key-index purge
+=== TEST 21: second prefix entry is a miss after wildcard key-index purge
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- request
@@ -324,6 +401,21 @@ GET /proxy/prefix-b
 --- response_headers
 X-Cache-Status: MISS
 --- response_body: prefix-b
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 22: stats report wildcard key-index usage
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request
+GET /_stats
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: (?s)"key_index":\{[^}]*"wildcard_hits":[1-9]
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
