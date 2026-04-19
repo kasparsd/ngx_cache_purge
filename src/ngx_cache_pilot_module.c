@@ -2195,24 +2195,11 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
             ngx_str_t   *fp;
             ngx_array_t *fan_paths;
             ngx_int_t    purge_rc;
-            ngx_uint_t   ki, klen;
-            u_char      *p;
+            ngx_uint_t   ki;
 
             kv = c->keys.elts;
-            klen = 0;
-            for (ki = 0; ki < c->keys.nelts; ki++) {
-                klen += kv[ki].len;
-            }
-
-            key_text.data = ngx_pnalloc(r->pool, klen + 1);
-            if (key_text.data != NULL) {
-                p = key_text.data;
-                for (ki = 0; ki < c->keys.nelts; ki++) {
-                    p = ngx_cpymem(p, kv[ki].data, kv[ki].len);
-                }
-                *p = '\0';
-                key_text.len = klen;
-
+            if (c->keys.nelts > 0) {
+                key_text = kv[0];
                 fan_paths = NULL;
                 if (ngx_http_cache_index_store_collect_paths_by_exact_key(
                             reader, r->pool, &tag_zone->zone_name, &key_text,
@@ -2262,8 +2249,6 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
     ngx_str_t                       *kv;
     ngx_str_t                        key_text;
     ngx_uint_t                       ki;
-    ngx_uint_t                       klen;
-    u_char                          *p;
 
     switch (ngx_http_file_cache_open(r)) {
     case NGX_OK:
@@ -2315,20 +2300,8 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
     if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_m,
             &tag_zone, &reader) == NGX_OK) {
         kv = c->keys.elts;
-        klen = 0;
-        for (ki = 0; ki < c->keys.nelts; ki++) {
-            klen += kv[ki].len;
-        }
-
-        key_text.data = ngx_pnalloc(r->pool, klen + 1);
-        if (key_text.data != NULL) {
-            p = key_text.data;
-            for (ki = 0; ki < c->keys.nelts; ki++) {
-                p = ngx_cpymem(p, kv[ki].data, kv[ki].len);
-            }
-            *p = '\0';
-            key_text.len = klen;
-
+        if (c->keys.nelts > 0) {
+            key_text = kv[0];
             fan_paths = NULL;
             if (ngx_http_cache_index_store_collect_paths_by_exact_key(
                         reader, r->pool, &tag_zone->zone_name, &key_text,
