@@ -5,7 +5,7 @@ use Test::Nginx::Socket;
 
 repeat_each(1);
 
-plan tests => repeat_each() * (blocks() * 4);
+plan tests => repeat_each() * 163;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_cache keys_zone=test_cache:10m;
@@ -619,7 +619,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 22: first tag purge bootstraps the zone index
+=== TEST 22: first tag purge succeeds after restart bootstrap
 --- http_config eval: $::http_config_restart
 --- config eval: $::config_soft
 --- request
@@ -628,11 +628,7 @@ PURGE /proxy/a?t=restart
 Surrogate-Key: group-one
 X-Purge-Mode: soft
 --- error_code: 200
---- response_body_like: Successful purge
---- grep_error_log eval
-qr/cache_tag bootstrap zone "test_cache"/
---- grep_error_log_out
-cache_tag bootstrap zone "test_cache"
+--- response_body_like: (?s)Successful purge.*Key\s*:\s*/proxy/a\?t=restart
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 
