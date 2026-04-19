@@ -614,7 +614,7 @@ cat /workspace/bench/results/latest/summary.txt
 
 Results are written under `bench/results/<timestamp>/` with one JSON file per scenario plus `summary.json`, `summary.txt`, and nginx log artifacts. The `bench/results/latest` symlink points at the most recent run. The runner always creates an aggregated `nginx_error.log` plus per-startup and per-scenario `*_nginx_error.log` files so CI artifact paths stay stable; when nginx emits log output, `bench/bench.pl` also prints that chunk inline and appends it to those files.
 
-The benchmark suite uses a single nginx runtime per run. By default it renders `bench/nginx.conf`, starts nginx once, and executes all selected scenarios against that runtime. You can still override the template for a whole run with `--config-template <name-or-path>` if you need to benchmark an alternate layout.
+The benchmark suite uses a single nginx runtime per run. It renders `bench/nginx.conf`, starts nginx once, and executes all selected scenarios against that runtime.
 
 `bench/bench.pl` can also fail the run on threshold regressions with `--assert-file <path>`. The default assertion file is JSON with optional `defaults` and per-scenario rules under `scenarios`, keyed by scenario ids (for example `exact`, `wild`, `tag-shm`, `exact-scan`, `exact-index`, `wild-scan`, and `wild-index`). Metrics use dot-paths into the summary object, for example `get.rps`, `get.cache_hit_rate`, `get.latency_us.p95`, and `purge.rps`. Each rule supports `min` and/or `max`. See `bench/assertions.example.json` for the current performance thresholds.
 

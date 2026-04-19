@@ -28,7 +28,6 @@ my %options = (
 GetOptions(
     'assert-file=s' => \$options{assert_file},
     'count=i'       => \$options{count},
-    'config-template=s' => \$options{config_template},
     'concurrency=i' => \$options{concurrency},
     'out-dir=s'     => \$options{out_dir},
     'port=i'        => \$options{port},
@@ -49,21 +48,17 @@ my $get_worker = "$FindBin::Bin/worker_get.pl";
 my $purge_worker = "$FindBin::Bin/worker_purge.pl";
 my $stats_url = "http://127.0.0.1:$options{port}/bench_stats";
 my $ua = LWP::UserAgent->new(agent => 'ngx-cache-pilot-bench/1.0', keep_alive => 5, timeout => 5);
-my $default_config_template = "$FindBin::Bin/nginx.conf";
+my $runtime_template = "$FindBin::Bin/nginx.conf";
 my $runtime_root;
 my $runtime_conf_dir;
 my $worker_scratch_dir;
 my $nginx_prefix;
 my $nginx_error_log;
 my $nginx_pid_file;
-my $run_config_template;
-my $run_config_template_name;
+my $runtime_template_name = 'nginx';
 
 die "nginx binary not found at $nginx; run make nginx-build first\n"
     unless -x $nginx;
-
-$run_config_template = resolve_config_template($options{config_template});
-$run_config_template_name = config_template_name($run_config_template);
 
 my @all_scenarios = (
     {
@@ -72,7 +67,7 @@ my @all_scenarios = (
         table_name => 'exact_purge',
         prefix     => '/exact/',
         mode       => 'exact',
-        index_mode => 'disabled',
+        index_mode => 'baseline',
     },
     {
         key        => 'wild',
@@ -80,7 +75,7 @@ my @all_scenarios = (
         table_name => 'wildcard_purge',
         prefix     => '/wild/',
         mode       => 'wildcard',
-        index_mode => 'disabled',
+        index_mode => 'baseline',
     },
     {
         key        => 'tag-shm',
@@ -89,7 +84,7 @@ my @all_scenarios = (
         prefix     => '/tag/',
         mode       => 'tag',
         tag_base   => 'bench-tag',
-        index_mode => 'readiness_only',
+        index_mode => 'tag',
         index_zone => 'bench_tag_shm',
     },
     {
@@ -98,7 +93,7 @@ my @all_scenarios = (
         table_name => 'exact_scan_purge',
         prefix     => '/exact-scan/',
         mode       => 'exact',
-        index_mode => 'disabled',
+        index_mode => 'baseline',
     },
     {
         key        => 'exact-index',
@@ -106,7 +101,7 @@ my @all_scenarios = (
         table_name => 'exact_indexed_purge',
         prefix     => '/exact-index/',
         mode       => 'exact',
-        index_mode => 'exact_fanout',
+        index_mode => 'exact-index',
         index_zone => 'bench_exact_index',
         require_index_ready => 1,
         vary_header => 'X-Bench-Variant',
@@ -120,7 +115,7 @@ my @all_scenarios = (
         table_name => 'wildcard_scan_purge',
         prefix     => '/wild-scan/',
         mode       => 'wildcard',
-        index_mode => 'disabled',
+        index_mode => 'baseline',
     },
     {
         key        => 'wild-index',
@@ -128,7 +123,7 @@ my @all_scenarios = (
         table_name => 'wildcard_indexed_purge',
         prefix     => '/wild-index/',
         mode       => 'wildcard',
-        index_mode => 'wildcard_prefix',
+        index_mode => 'wildcard-index',
         index_zone => 'bench_wild_index',
         require_index_ready => 1,
     },
@@ -199,12 +194,12 @@ eval {
 
     log_info(sprintf(
         'Starting nginx with template=%s',
-        $run_config_template_name,
+        $runtime_template_name,
     ));
     start_nginx($current_conf);
     wait_for_stats($stats_url);
     log_info('Metrics endpoint is ready');
-    record_nginx_error_log($run_dir, $run_config_template_name . '_startup');
+    record_nginx_error_log($run_dir, $runtime_template_name . '_startup');
 
     for my $scenario (@scenarios) {
         $active_scenario = $scenario;
@@ -304,7 +299,7 @@ sub run_scenario {
     log_info("Warming cache for $scenario->{name}");
     warm_cache($scenario->{prefix}, $options{count}, $scenario);
 
-    if (($scenario->{index_mode} || '') eq 'wildcard_prefix') {
+    if (($scenario->{index_mode} || '') eq 'wildcard-index') {
         # Wildcard index metadata is written asynchronously; give it a brief
         # settle window before running wildcard preflight probes.
         sleep(1.0);
@@ -387,8 +382,7 @@ sub run_scenario {
         scenario      => $scenario->{key},
         name          => $scenario->{name},
         table_name    => $scenario->{table_name},
-        backend       => scenario_backend_label($scenario),
-        config_template => $run_config_template_name,
+        config_template => $runtime_template_name,
         duration_s    => $duration_s,
         get           => $get_result,
         purge         => $purge_result,
@@ -459,10 +453,10 @@ sub cleanup_runtime_state {
 }
 
 sub render_runtime_config {
-    my $template_name = sanitize_config_name($run_config_template_name);
+    my $template_name = sanitize_config_name($runtime_template_name);
     my $target = "$runtime_conf_dir/bench_nginx_${template_name}.conf";
 
-    render_config($run_config_template, $target, $options{port});
+    render_config($runtime_template, $target, $options{port});
 
     return $target;
 }
@@ -633,7 +627,7 @@ sub warm_cache {
 
 sub ensure_index_probe_ready {
     my ($scenario, $stats_url, $timeout_s) = @_;
-    my $mode = $scenario->{index_mode} || 'disabled';
+    my $mode = $scenario->{index_mode} || 'baseline';
     my $probe_prefix;
     my @probe_urls;
     my $purge_url;
@@ -649,7 +643,7 @@ sub ensure_index_probe_ready {
     return {
         attempted => 0,
         succeeded => 0,
-    } unless $mode eq 'wildcard_prefix';
+    } unless $mode eq 'wildcard-index';
 
     $probe_prefix = $options{count};
     $deadline = hires_time() + $timeout_s;
@@ -764,7 +758,7 @@ sub scenario_ready_state {
 
 sub scenario_index_plan {
     my ($scenario) = @_;
-    my $mode = $scenario->{index_mode} || 'disabled';
+    my $mode = $scenario->{index_mode} || 'baseline';
     my $zone = defined $scenario->{index_zone}
                ? $scenario->{index_zone} : '';
 
@@ -772,7 +766,7 @@ sub scenario_index_plan {
         tracking_mode   => $mode,
         target_zone     => $zone,
         ready_gate      => $scenario->{require_index_ready} ? 1 : 0,
-        expected_assist => ($mode eq 'wildcard_prefix' || $mode eq 'exact_fanout')
+        expected_assist => ($mode eq 'wildcard-index' || $mode eq 'exact-index')
                            ? 1 : 0,
         short_label     => index_plan_short_label($mode),
     };
@@ -780,20 +774,20 @@ sub scenario_index_plan {
 
 sub build_index_report {
     my ($scenario, $before, $after, $metrics_delta, $nginx_log, $probe_report) = @_;
-    my $mode = $scenario->{index_mode} || 'disabled';
+    my $mode = $scenario->{index_mode} || 'baseline';
     my $zone = $scenario->{index_zone};
     my $before_state = zone_index_state_code($before, $zone);
     my $after_state = zone_index_state_code($after, $zone);
     my $wildcard_hits = key_index_counter_delta($metrics_delta, 'wildcard_hits');
     my $exact_fanout = key_index_counter_delta($metrics_delta, 'exact_fanout');
     my $used_assist = 0;
-    my $expected_assist = ($mode eq 'wildcard_prefix' || $mode eq 'exact_fanout') ? 1 : 0;
+    my $expected_assist = ($mode eq 'wildcard-index' || $mode eq 'exact-index') ? 1 : 0;
 
-    if ($mode eq 'wildcard_prefix' && $wildcard_hits > 0) {
+    if ($mode eq 'wildcard-index' && $wildcard_hits > 0) {
         $used_assist = 1;
     }
 
-    if ($mode eq 'exact_fanout' && $exact_fanout > 0) {
+    if ($mode eq 'exact-index' && $exact_fanout > 0) {
         $used_assist = 1;
     }
 
@@ -817,12 +811,12 @@ sub build_index_report {
                                                                $ready_after),
     };
 
-    if ($mode eq 'wildcard_prefix') {
+    if ($mode eq 'wildcard-index') {
         $report->{wildcard_prefix_hits_delta} = $wildcard_hits;
         add_probe_diagnostic_summary($report, $probe_report);
     }
 
-    if ($mode eq 'exact_fanout') {
+    if ($mode eq 'exact-index') {
         $report->{exact_fanout_delta} = $exact_fanout;
     }
 
@@ -893,10 +887,10 @@ sub key_index_counter_delta {
 sub index_plan_short_label {
     my ($mode) = @_;
 
-    return 'off' if $mode eq 'disabled';
-    return 'ready' if $mode eq 'readiness_only';
-    return 'fanout' if $mode eq 'exact_fanout';
-    return 'w-prefix' if $mode eq 'wildcard_prefix';
+    return 'off' if $mode eq 'baseline';
+    return 'ready' if $mode eq 'tag';
+    return 'fanout' if $mode eq 'exact-index';
+    return 'w-prefix' if $mode eq 'wildcard-index';
 
     return 'other';
 }
@@ -904,9 +898,9 @@ sub index_plan_short_label {
 sub index_report_short_label {
     my ($mode, $used_assist, $ready_before, $ready_after) = @_;
 
-    return 'off' if $mode eq 'disabled';
+    return 'off' if $mode eq 'baseline';
 
-    if ($mode eq 'wildcard_prefix' || $mode eq 'exact_fanout') {
+    if ($mode eq 'wildcard-index' || $mode eq 'exact-index') {
         return 'assist' if $used_assist;
         return 'miss-rdy' if $ready_before;
         return 'miss';
@@ -1250,33 +1244,6 @@ sub evaluate_metric_rule {
     }
 
     return undef;
-}
-
-sub resolve_config_template {
-    my ($value) = @_;
-
-    return $default_config_template unless defined $value;
-    return $value if -f $value;
-
-    my $named_path = "$FindBin::Bin/$value.conf";
-    return $named_path if -f $named_path;
-
-    die "unknown config template $value\n";
-}
-
-sub config_template_name {
-    my ($path) = @_;
-    my ($name) = $path =~ m{/([^/]+)\.conf$};
-    return defined $name ? $name : $path;
-}
-
-sub scenario_backend_label {
-    my ($scenario) = @_;
-    my $mode = $scenario->{index_mode} || 'disabled';
-
-    return 'core' if $mode eq 'disabled';
-
-    return 'shm';
 }
 
 sub sanitize_config_name {
