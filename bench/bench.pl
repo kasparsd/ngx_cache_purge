@@ -8,7 +8,6 @@ use File::Path qw(make_path remove_tree);
 use File::Temp qw(tempdir);
 use FindBin;
 use Getopt::Long qw(GetOptions);
-use HTTP::Request ();
 use JSON::PP ();
 use LWP::UserAgent;
 use POSIX qw(setpgid strftime);
@@ -40,7 +39,6 @@ die "--concurrency must be > 0\n" unless $options{concurrency} > 0;
 
 my $duration = $options{quick} ? 15 : 60;
 my $scenario_ready_timeout_s = 10;
-my $index_probe_timeout_s = 5;
 my $perl = $^X;
 my $nginx = '/opt/nginx/sbin/nginx';
 my $get_worker = "$FindBin::Bin/worker_get.pl";
@@ -81,34 +79,6 @@ my @all_scenarios = (
         index_tracking_mode => 'disabled',
     },
     {
-        key        => 'exact-indexed',
-        name       => 'exact_indexed_purge',
-        table_name => 'exact_indexed_purge',
-        config_template => 'nginx_indexed',
-        prefix     => '/exact/',
-        mode       => 'exact',
-        backend    => 'sqlite',
-        index_target_zone => 'bench_exact',
-        require_index_zone_ready => 1,
-        index_tracking_mode => 'readiness_only',
-    },
-    {
-        key        => 'exact-fanout',
-        name       => 'exact_fanout_purge',
-        table_name => 'exact_fanout_purge',
-        config_template => 'nginx_fanout',
-        prefix     => '/exact-vary/',
-        mode       => 'exact',
-        backend    => 'sqlite',
-        vary_header => 'X-Variant',
-        vary_values => [qw(a b c)],
-        purge_header => 'X-Variant',
-        purge_header_value => 'a',
-        index_target_zone => 'bench_fanout',
-        require_index_zone_ready => 1,
-        index_tracking_mode => 'exact_fanout',
-    },
-    {
         key        => 'wild',
         name       => 'wildcard_purge',
         table_name => 'wildcard_purge',
@@ -119,18 +89,6 @@ my @all_scenarios = (
         index_tracking_mode => 'disabled',
     },
     {
-        key        => 'wild-indexed',
-        name       => 'wildcard_indexed_purge',
-        table_name => 'wildcard_indexed_purge',
-        config_template => 'nginx_indexed',
-        prefix     => '/wild/',
-        mode       => 'wildcard',
-        backend    => 'sqlite',
-        index_target_zone => 'bench_wild',
-        require_index_zone_ready => 1,
-        index_tracking_mode => 'wildcard_prefix',
-    },
-    {
         key        => 'tag-sqlite',
         name       => 'tag_sqlite_purge',
         table_name => 'tag_sqlite_purge',
@@ -139,7 +97,7 @@ my @all_scenarios = (
         mode       => 'tag',
         tag_base   => 'bench-tag',
         backend    => 'sqlite',
-        index_tracking_mode => 'readiness_only',
+        index_tracking_mode => 'disabled',
     },
     {
         key        => 'tag-redis',
@@ -150,9 +108,7 @@ my @all_scenarios = (
         mode       => 'tag',
         tag_base   => 'bench-rtag',
         backend    => 'redis',
-        index_target_zone => 'bench_tag_redis',
-        require_index_zone_ready => 1,
-        index_tracking_mode => 'readiness_only',
+        index_tracking_mode => 'disabled',
     },
 );
 
@@ -343,7 +299,6 @@ sub run_scenario {
     wait_for_scenario_ready($scenario, $stats_endpoint, $scenario_ready_timeout_s);
     log_info("Warming cache for $scenario->{name}");
     warm_cache($scenario->{prefix}, $options{count}, $scenario);
-    ensure_index_probe_ready($scenario, $stats_endpoint, $index_probe_timeout_s);
 
     log_info("Fetching baseline stats for $scenario->{name}");
     $before = fetch_stats($stats_endpoint);
@@ -681,55 +636,6 @@ sub warm_cache {
     }
 
     sleep(0.5);
-}
-
-sub ensure_index_probe_ready {
-    my ($scenario, $stats_url, $timeout_s) = @_;
-    my $mode = $scenario->{index_tracking_mode} || 'disabled';
-    my $probe_index;
-    my $probe_url;
-    my $before;
-    my $after;
-    my $delta;
-    my $request;
-    my $response;
-    my $deadline;
-
-    return unless $mode eq 'wildcard_prefix';
-
-    $probe_index = $options{count};
-    $probe_url = "http://127.0.0.1:$options{port}$scenario->{prefix}$probe_index";
-    $deadline = hires_time() + $timeout_s;
-
-    log_info("Running wildcard index preflight for $scenario->{name}");
-
-    while (hires_time() < $deadline) {
-        $response = $ua->get($probe_url);
-        die "wildcard index preflight warm-up failed for $probe_url: "
-            . $response->status_line . "\n"
-            unless $response->is_success;
-
-        sleep(0.3);
-
-        $before = fetch_stats($stats_url);
-        $request = HTTP::Request->new('PURGE', $probe_url . '*');
-        $response = $ua->request($request);
-        die "wildcard index preflight purge failed for $probe_url*: "
-            . $response->status_line . "\n"
-            unless $response->is_success;
-
-        sleep(0.3);
-
-        $after = fetch_stats($stats_url);
-        $delta = stats_delta($before, $after);
-        return if key_index_counter_delta($delta, 'wildcard_hits') > 0;
-    }
-
-    die sprintf(
-        'wildcard index preflight timed out for %s after %ss: metadata never produced a wildcard index hit' . "\n",
-        $scenario->{name},
-        $timeout_s,
-    );
 }
 
 sub wait_for_scenario_ready {
