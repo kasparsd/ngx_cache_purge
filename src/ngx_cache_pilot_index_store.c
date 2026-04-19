@@ -1307,6 +1307,7 @@ ngx_http_cache_index_store_shm_collect_paths_by_exact_key(
     ngx_http_cache_index_store_ctx_t  *ctx;
     ngx_http_cache_index_shm_zone_t   *zone;
     ngx_http_cache_index_shm_key_entry_t *entry;
+    ngx_http_cache_index_shm_file_t   *file;
     ngx_queue_t                       *q;
     ngx_array_t                       *result;
 
@@ -1328,8 +1329,6 @@ ngx_http_cache_index_store_shm_collect_paths_by_exact_key(
             for (q = ngx_queue_head(&entry->files);
                     q != ngx_queue_sentinel(&entry->files);
                     q = ngx_queue_next(q)) {
-                ngx_http_cache_index_shm_file_t *file;
-
                 file = ngx_queue_data(q, ngx_http_cache_index_shm_file_t,
                                       key_queue);
 
