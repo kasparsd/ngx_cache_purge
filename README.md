@@ -634,6 +634,7 @@ The repository includes a containerized build environment with:
 
 - Debian-based build tooling for NGINX modules
 - downloaded NGINX source in `/opt/nginx-src/nginx-$NGINX_VERSION`
+- prebuilt default NGINX binary at `/opt/nginx/sbin/nginx`
 - `Test::Nginx` installed from `openresty/test-nginx`
 
 ### Development container
