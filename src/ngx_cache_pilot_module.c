@@ -1800,8 +1800,7 @@ ngx_http_cache_pilot_send_response(ngx_http_request_t *r) {
 
 void
 ngx_http_cache_pilot_set_response_path(ngx_http_request_t *r,
-    ngx_http_cache_pilot_purge_path_e purge_path)
-{
+                                       ngx_http_cache_pilot_purge_path_e purge_path) {
     ngx_http_cache_pilot_request_ctx_t  *ctx;
 
     ctx = ngx_http_cache_pilot_get_request_ctx(r);
@@ -1813,8 +1812,7 @@ ngx_http_cache_pilot_set_response_path(ngx_http_request_t *r,
 }
 
 static ngx_http_cache_pilot_request_ctx_t *
-ngx_http_cache_pilot_get_request_ctx(ngx_http_request_t *r)
-{
+ngx_http_cache_pilot_get_request_ctx(ngx_http_request_t *r) {
     ngx_http_cache_pilot_request_ctx_t  *ctx;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_cache_pilot_module);
@@ -1833,8 +1831,7 @@ ngx_http_cache_pilot_get_request_ctx(ngx_http_request_t *r)
 }
 
 static ngx_str_t
-ngx_http_cache_pilot_response_path_value(ngx_http_request_t *r)
-{
+ngx_http_cache_pilot_response_path_value(ngx_http_request_t *r) {
     static ngx_str_t  values[] = {
         ngx_null_string,
         ngx_string("exact-key-fanout"),
@@ -2314,7 +2311,7 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
 
         if (fanout_used) {
             ngx_http_cache_pilot_set_response_path(r,
-                NGX_HTTP_CACHE_PILOT_PURGE_PATH_EXACT_KEY_FANOUT);
+                                                   NGX_HTTP_CACHE_PILOT_PURGE_PATH_EXACT_KEY_FANOUT);
             NGX_CACHE_PILOT_METRICS_INC(ngx_http_cache_pilot_metrics_ctx(pmcf_m),
                                         key_index_exact_fanout);
         }
@@ -2422,7 +2419,7 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
                                     purges_exact_soft);
         if (fanout_used) {
             ngx_http_cache_pilot_set_response_path(r,
-                NGX_HTTP_CACHE_PILOT_PURGE_PATH_EXACT_KEY_FANOUT);
+                                                   NGX_HTTP_CACHE_PILOT_PURGE_PATH_EXACT_KEY_FANOUT);
             NGX_CACHE_PILOT_METRICS_INC(ngx_http_cache_pilot_metrics_ctx(pmcf_m),
                                         key_index_exact_fanout);
         }
@@ -2669,7 +2666,7 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
                        &key_prefix);
 
         ngx_http_cache_pilot_set_response_path(r,
-            NGX_HTTP_CACHE_PILOT_PURGE_PATH_WILDCARD_INDEX);
+                                               NGX_HTTP_CACHE_PILOT_PURGE_PATH_WILDCARD_INDEX);
 
         NGX_CACHE_PILOT_METRICS_INC(ngx_http_cache_pilot_metrics_ctx(pmcf_idx),
                                     key_index_wildcard_hits);
@@ -2732,7 +2729,7 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
         r->aio = 1;
 
         ngx_http_cache_pilot_set_response_path(r,
-            NGX_HTTP_CACHE_PILOT_PURGE_PATH_FILESYSTEM_FALLBACK);
+                                               NGX_HTTP_CACHE_PILOT_PURGE_PATH_FILESYSTEM_FALLBACK);
 
         return NGX_DONE;
     }
@@ -2761,7 +2758,7 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
                    &key_prefix);
 
     ngx_http_cache_pilot_set_response_path(r,
-        NGX_HTTP_CACHE_PILOT_PURGE_PATH_FILESYSTEM_FALLBACK);
+                                           NGX_HTTP_CACHE_PILOT_PURGE_PATH_FILESYSTEM_FALLBACK);
 
     /* Walk the tree and remove all the files matching key_partial */
     tree.init_handler = NULL;

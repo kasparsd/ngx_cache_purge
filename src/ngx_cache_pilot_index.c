@@ -532,10 +532,10 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
     if (rc == NGX_OK) {
         if (bootstrapped_on_demand) {
             ngx_http_cache_pilot_set_response_path(r,
-                NGX_HTTP_CACHE_PILOT_PURGE_PATH_BOOTSTRAPPED_ON_DEMAND);
+                                                   NGX_HTTP_CACHE_PILOT_PURGE_PATH_BOOTSTRAPPED_ON_DEMAND);
         } else if (reused_persisted_index) {
             ngx_http_cache_pilot_set_response_path(r,
-                NGX_HTTP_CACHE_PILOT_PURGE_PATH_REUSED_PERSISTED_INDEX);
+                                                   NGX_HTTP_CACHE_PILOT_PURGE_PATH_REUSED_PERSISTED_INDEX);
         }
     }
 

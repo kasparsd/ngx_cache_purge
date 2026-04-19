@@ -224,7 +224,7 @@ char *ngx_http_cache_index_headers_conf(ngx_conf_t *cf, ngx_command_t *cmd,
 ngx_flag_t ngx_http_cache_index_location_enabled(
     ngx_http_cache_pilot_loc_conf_t *cplcf);
 void ngx_http_cache_pilot_set_response_path(ngx_http_request_t *r,
-    ngx_http_cache_pilot_purge_path_e purge_path);
+        ngx_http_cache_pilot_purge_path_e purge_path);
 ngx_int_t ngx_http_cache_index_request_headers(ngx_http_request_t *r,
         ngx_array_t **tags);
 ngx_int_t ngx_http_cache_index_extract_tokens(ngx_pool_t *pool, u_char *value,
