@@ -204,7 +204,7 @@ GET /_stats
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: (?s)"key_cache_test":\{.*"index":\{"state":"ready","state_code":2,"max_size":33554432,"backend":"shm"
+--- response_body_like: (?s)"key_cache_test":\{.*"index":\{"state":"ready","state_code":2,"max_size":33554432,[^}]*"backend":"shm"
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -334,7 +334,7 @@ Content-Type: application/json
 --- response_body_like eval
 [
     '(?s)"key_index":\{[^}]*"exact_fanout":',
-    '"index":\{"state":"ready","state_code":2,"max_size":33554432,"backend":"shm"',
+    '"index":\{"state":"ready","state_code":2,"max_size":33554432,[^}]*"backend":"shm"',
 ]
 --- timeout: 10
 --- no_error_log eval
