@@ -248,7 +248,7 @@ PURGE /purge_json/proxy/passwd?t=7
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: {\"Key\": \"\/proxy\/passwd\?t=7\"
+--- response_body_like: {\"key\": \"\/proxy\/passwd\?t=7\"
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
