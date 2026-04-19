@@ -170,7 +170,7 @@ X-Purge-Mode: soft
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: {\"key\": \"\/proxy\/passwd\?t=proxy-soft-json\"
+--- response_body_like: ^\{\"key\": \"\/proxy\/passwd\?t=proxy-soft-json\"\}$
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
