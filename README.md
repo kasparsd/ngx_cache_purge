@@ -280,7 +280,7 @@ For dedicated purge locations, configure the cache zone with `*_cache`, the purg
 
 Set the response type returned after a purge.
 
-When `json` is selected, successful purges may also include `cache_pilot.purge_path` to describe the request path that completed the purge, for example `filesystem-fallback`, `key-prefix-index`, `reused-persisted-index`, `bootstrapped-on-demand`, or `exact-key-fanout`. Here, `reused-persisted-index` means the request reused shared-memory index state that was already built for the current nginx lifetime; it does not imply on-disk persistence. JSON responses also include `cache_pilot.purged.by_key` and `cache_pilot.purged.by_tag`, which report how many cache entries that purge request removed or expired through key-based and tag-based matching. Text responses keep existing plain body format.
+When `json` is selected, successful purges may also include `cache_pilot.purge_path` to describe the request path that completed the purge, for example `filesystem-fallback`, `key-prefix-index`, `reused-persisted-index`, `bootstrapped-on-demand`, or `exact-key-fanout`. Here, `reused-persisted-index` means the request reused shared-memory index state that was already built for the current nginx lifetime; it does not imply on-disk persistence. JSON responses also include `cache_pilot.purged`, using the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts to report how many cache entries that purge request removed or expired. Text responses keep existing plain body format.
 
 #### `cache_pilot_purge_mode_header`
 
@@ -394,9 +394,22 @@ location /_cache_stats {
         }
     },
     "purged": {
-        "exact_key": 0,
-        "wildcard_key": 0,
-        "by_tag": 6
+        "exact": {
+            "hard": 0,
+            "soft": 0
+        },
+        "wildcard": {
+            "hard": 0,
+            "soft": 0
+        },
+        "tag": {
+            "hard": 0,
+            "soft": 6
+        },
+        "all": {
+            "hard": 0,
+            "soft": 0
+        }
     },
     "key_index": {
         "exact_fanout": 0,
@@ -426,12 +439,12 @@ location /_cache_stats {
 
 Additional zones are omitted for brevity.
 
-`zones.<zone>.max_size` reports the configured NGINX cache zone limit. When the in-memory index is enabled, `index.max_size` reports the configured `cache_pilot_index_zone_size` shared-memory limit for the index and `index.last_updated_at` reports the Unix epoch timestamp of the last index mutation observed for that zone. `index` is omitted when the in-memory index is unavailable. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `purges` counters are global across all zones and survive `nginx -s reload`. `purged.exact_key`, `purged.wildcard_key`, and `purged.by_tag` report cumulative cache entries removed or expired through exact-key, wildcard-key, and tag-based purge matching.
+`zones.<zone>.max_size` reports the configured NGINX cache zone limit. When the in-memory index is enabled, `index.max_size` reports the configured `cache_pilot_index_zone_size` shared-memory limit for the index and `index.last_updated_at` reports the Unix epoch timestamp of the last index mutation observed for that zone. `index` is omitted when the in-memory index is unavailable. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `purges` counters are global across all zones and survive `nginx -s reload`. `purged` uses the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts for cumulative cache entries removed or expired by each purge path.
 
 **Prometheus metrics** (prefix `nginx_cache_pilot_`):
 
 - `nginx_cache_pilot_purges_total{type,mode}` — counter, purge operations by type (`exact`, `wildcard`, `tag`, `all`) and mode (`hard`, `soft`)
-- `nginx_cache_pilot_purged_entries_total{by}` — counter, cache entries removed or expired by purge match type (`exact_key`, `wildcard_key`, `tag`)
+- `nginx_cache_pilot_purged_entries_total{type,mode}` — counter, cache entries removed or expired by purge type (`exact`, `wildcard`, `tag`, `all`) and mode (`hard`, `soft`)
 - `nginx_cache_pilot_key_index_total{type}` — counter, key-index assisted purge operations by type (`exact_fanout`, `wildcard_hits`)
 - `nginx_cache_pilot_zone_size_bytes{zone}` — gauge, current zone usage in bytes
 - `nginx_cache_pilot_zone_max_size_bytes{zone}` — gauge, configured maximum NGINX cache zone size
