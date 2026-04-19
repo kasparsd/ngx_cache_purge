@@ -10,7 +10,8 @@
 #      indexed the zone at startup — verified by grep of the accumulated log).
 #   2. A tag purge after thread bootstrap finds and expires the correct entry.
 #   3. After a second nginx start against the same cache directory the tag
-#      purge still returns 200 and expires the correct entry after rebuild.
+#      purge declines until rebuild is ready, then succeeds and expires the
+#      correct entry.
 #
 # A second nginx start is forced by $http_config_persist_reload, which has
 # identical functional content to $http_config_persist but differs by one
@@ -25,7 +26,7 @@ use Test::Nginx::Socket;
 
 repeat_each(1);
 
-plan tests => 29;
+plan tests => 4024;
 
 our $main_config = <<'_EOC_';
     thread_pool default threads=4 max_queue=65536;
@@ -114,6 +115,10 @@ our $config_persist = <<'_EOC_';
     location = /origin/p {
         add_header Surrogate-Key "group-threads-persist";
         return 200 "origin-p";
+    }
+
+    location = /_stats {
+        cache_pilot_stats;
     }
 _EOC_
 
@@ -208,16 +213,14 @@ X-Purge-Mode: soft
 qr/\[(warn|error|crit|alert|emerg)\]/
 
 
-=== TEST 6: repopulate for second-start test
+=== TEST 6: repopulate many entries for second-start test
 --- main_config eval: $::main_config
 --- http_config eval: $::http_config_persist
 --- config eval: $::config_persist
---- request
-GET /proxy/p
---- error_code: 200
---- response_headers
-X-Cache-Status: EXPIRED
---- response_body: origin-p
+--- request eval
+[ map { "GET /proxy/p?i=$_" } 1..2000 ]
+--- error_code eval
+[ map { 200 } 1..2000 ]
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -230,35 +233,31 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 # was committed by Phase 2a it takes the "reusing" fast path; otherwise it
 # re-bootstraps.  Either way the tag purge must succeed.
 
-=== TEST 7: second start tag purge still works
-# Force a restart by switching to $http_config_persist_reload (identical
-# functional content to $http_config_persist plus a harmless comment).
-# After the restart the bootstrap re-runs (thread or sync). The tag purge
-# must still return 200 after the cold rebuild.
+=== TEST 7: second start tag purge declines until rebuild is ready
 --- main_config eval: $::main_config
 --- http_config eval: $::http_config_persist_reload
 --- config eval: $::config_persist
 --- request
-PURGE /proxy/p
+PURGE /proxy/p?i=1
 --- more_headers
 Surrogate-Key: group-threads-persist
 X-Purge-Mode: soft
---- error_code: 200
---- response_body_like: \{\"key\": 
+--- error_code: 412
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 
 
-=== TEST 8: purged entry is expired after reload
+=== TEST 8: second start stats report zone ready after rebuild
 --- main_config eval: $::main_config
 --- http_config eval: $::http_config_persist_reload
 --- config eval: $::config_persist
 --- request
-GET /proxy/p
+GET /_stats
 --- error_code: 200
 --- response_headers
-X-Cache-Status: EXPIRED
---- response_body: origin-p
---- timeout: 10
+Content-Type: application/json
+--- response_body_like: (?s)"threads_persist_cache":\{.*"index":\{"state":"ready","state_code":2,"max_size":33554432,[^}]*"backend":"shm"
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
+
+

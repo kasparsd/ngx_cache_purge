@@ -3432,6 +3432,7 @@ ngx_http_cache_pilot_create_loc_conf(ngx_conf_t *cf) {
 # endif /* NGX_HTTP_UWSGI */
 
     conf->resptype = NGX_CONF_UNSET_UINT;
+    conf->protocol = NGX_CONF_UNSET_UINT;
     conf->cache_index = NGX_CONF_UNSET;
     conf->purge_mode_header.len = 0;
     conf->purge_mode_header.data = NULL;

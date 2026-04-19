@@ -5,7 +5,7 @@ use Test::Nginx::Socket;
 
 repeat_each(1);
 
-plan tests => repeat_each() * 163;
+plan tests => repeat_each() * 167;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_cache keys_zone=test_cache:10m;
@@ -244,6 +244,10 @@ our $config_soft = <<'_EOC_';
         add_header         Surrogate-Key "group-three";
         add_header         Cache-Tag "gamma";
         return 200         "origin-c";
+    }
+
+    location = /_stats {
+        cache_pilot_stats;
     }
 _EOC_
 
@@ -622,7 +626,21 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 22: first tag purge succeeds after restart bootstrap
+=== TEST 22: restart stats report zone ready before tag purge success
+--- http_config eval: $::http_config_restart
+--- config eval: $::config_soft
+--- request
+GET /_stats
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: (?s)"test_cache":\{.*"index":\{"state":"ready","state_code":2,"max_size":33554432,[^}]*"backend":"shm"
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 23: first tag purge succeeds after restart bootstrap
 --- http_config eval: $::http_config_restart
 --- config eval: $::config_soft
 --- request
@@ -637,7 +655,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 23: second tag purge reports reused index after restart bootstrap
+=== TEST 24: second tag purge reports reused index after restart bootstrap
 --- http_config eval: $::http_config_restart
 --- config eval: $::config_soft_json
 --- request
@@ -655,7 +673,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 24: prepare watched entry for plain purge fallback
+=== TEST 25: prepare watched entry for plain purge fallback
 --- http_config eval: $::http_config_plain
 --- config eval: $::config_plain
 --- request
@@ -670,7 +688,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 25: plain PURGE without override header still works when cache_pilot_index is enabled
+=== TEST 26: plain PURGE without override header still works when cache_pilot_index is enabled
 --- http_config eval: $::http_config_plain
 --- config eval: $::config_plain
 --- request
@@ -685,7 +703,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 26: plain PURGE fallback uses configured soft mode by default
+=== TEST 27: plain PURGE fallback uses configured soft mode by default
 --- http_config eval: $::http_config_plain
 --- config eval: $::config_plain
 --- request
@@ -700,7 +718,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 27: prepare watched entry for soft override fallback
+=== TEST 28: prepare watched entry for soft override fallback
 --- http_config eval: $::http_config_plain
 --- config eval: $::config_plain
 --- request
@@ -715,7 +733,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 28: explicit soft override preserves plain PURGE fallback behavior
+=== TEST 29: explicit soft override preserves plain PURGE fallback behavior
 --- http_config eval: $::http_config_plain
 --- config eval: $::config_plain
 --- request

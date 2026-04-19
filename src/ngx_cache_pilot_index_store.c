@@ -814,7 +814,7 @@ ngx_http_cache_index_store_shm_lookup_file(ngx_http_cache_index_shm_zone_t *zone
         ngx_str_t *path) {
     uint32_t                        hash;
 
-    hash = ngx_crc32_long(path->data, path->len);
+    hash = ngx_crc32_short(path->data, path->len);
 
     return ngx_http_cache_index_store_shm_lookup_generic(
                &zone->path_index, hash, path,
@@ -1037,7 +1037,7 @@ ngx_http_cache_index_store_shm_upsert_file_meta(ngx_http_cache_index_store_t *st
     file->path_len = path->len;
     file->key_len = cache_key_text->len;
     file->tag_count = tags != NULL ? tags->nelts : 0;
-    file->path_node.key = ngx_crc32_long(path->data, path->len);
+    file->path_node.key = ngx_crc32_short(path->data, path->len);
     ngx_queue_init(&file->tag_members);
 
     p = file->data;
