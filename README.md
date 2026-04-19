@@ -14,7 +14,7 @@ This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-module
 ## Compatibility And Limits
 
 - cache-tag indexing currently requires Linux
-- cache-tag and cache-key indexing use an in-memory shared-memory zone configured with `cache_pilot_index_zone_size`
+- cache-tag and cache-key indexing use a single in-memory shared-memory backend configured with `cache_pilot_index_zone_size`
 - index contents are rebuilt from cache files after a cold restart; they do not survive nginx process restarts
 - indexed tag purges require the cache zone to be registered with `cache_pilot_index on` and the shared-memory index for that zone to be ready; the module no longer runs an on-demand bootstrap inside the purge request path
 - `--with-threads` is strongly recommended so startup bootstrap and wildcard purge scans do not block the nginx event loop
@@ -49,6 +49,10 @@ make modules
 ```
 
 This produces `objs/ngx_http_cache_pilot_module.so`, which you can then copy into your nginx modules directory and load with `load_module`.
+
+Dynamic-module builds still depend on the corresponding nginx upstream cache modules such as `ngx_http_proxy_module`, `ngx_http_fastcgi_module`, `ngx_http_scgi_module`, and `ngx_http_uwsgi_module`. In packaged deployments those modules must either be built into nginx or loaded before `ngx_http_cache_pilot_module.so`.
+
+If a dynamic-module deployment fails at runtime with a missing `ngx_modules` symbol, that usually indicates a packaging or build-flow problem outside the normal nginx `auto/module` path rather than an index-store configuration issue in this repository.
 
 ### Alternative: build NGINX from source with this module
 
@@ -271,6 +275,8 @@ Allow purging of selected pages from `uWSGI` cache. Purge is enabled when at lea
 
 For dedicated purge locations, configure the cache zone with `*_cache`, the purge key with `*_cache_key`, and then enable purging with one or more string conditions plus optional `soft` / `purge_all` flags.
 
+For same-location syntax, the trailing purge method token is stored as a literal string at config time; it is not compiled as a complex value. In practice that means values such as `$foo` are not evaluated there.
+
 ### Optional directives
 
 #### `cache_pilot_purge_response_type`
@@ -297,6 +303,8 @@ If configured:
 - any other present value forces a hard purge
 - if the header is absent, the configured purge mode is used
 - `purge_all` ignores this override and keeps its configured behavior
+
+This header only switches soft versus hard mode after the request has already matched a configured purge path. It does not enable purge conditionally on its own.
 
 #### `cache_pilot_index_zone_size`
 
@@ -582,6 +590,8 @@ The watcher coalesces pending inotify operations on a 250 ms timer before applyi
 ### Shared-memory index
 
 The module stores tag associations, exact-key associations, per-file cache-key metadata, and per-zone bootstrap state inside an nginx shared-memory zone created by `cache_pilot_index_zone_size`.
+
+This shared-memory store is currently the only supported index backend. The module does not expose backend selection or pluggable storage configuration.
 
 **Read path.** Tag purges look up matching cache paths from the in-memory tag index, but only after the zone has reached the ready state. Exact-key fanout looks up sibling paths from the in-memory exact-key index. Wildcard key-prefix purges read in-memory per-file key metadata before deciding whether a filesystem walk is needed.
 
