@@ -59,9 +59,14 @@ typedef struct ngx_http_cache_pilot_partial_ctx_s
 
 typedef struct {
     ngx_uint_t  purge_path;
-    ngx_uint_t  purged_by_exact_key;
-    ngx_uint_t  purged_by_wildcard_key;
-    ngx_uint_t  purged_by_tag;
+    ngx_uint_t  purged_exact_hard;
+    ngx_uint_t  purged_exact_soft;
+    ngx_uint_t  purged_wildcard_hard;
+    ngx_uint_t  purged_wildcard_soft;
+    ngx_uint_t  purged_tag_hard;
+    ngx_uint_t  purged_tag_soft;
+    ngx_uint_t  purged_all_hard;
+    ngx_uint_t  purged_all_soft;
 } ngx_http_cache_pilot_request_ctx_t;
 
 static ngx_http_cache_pilot_request_ctx_t *
@@ -69,11 +74,9 @@ ngx_http_cache_pilot_get_request_ctx(ngx_http_request_t *r);
 static ngx_str_t
 ngx_http_cache_pilot_response_path_value(ngx_http_request_t *r);
 static void
-ngx_http_cache_pilot_record_purged_exact_key(ngx_http_request_t *r,
-    ngx_uint_t count);
-static void
-ngx_http_cache_pilot_record_purged_wildcard_key(ngx_http_request_t *r,
-    ngx_uint_t count);
+ngx_http_cache_pilot_record_purge(ngx_http_request_t *r,
+                                  ngx_http_cache_pilot_purge_stats_e purge_type, ngx_flag_t soft,
+                                  ngx_uint_t count);
 
 # if (NGX_HTTP_FASTCGI)
 char       *ngx_http_fastcgi_cache_purge_conf(ngx_conf_t *cf,
@@ -1206,22 +1209,6 @@ ngx_http_cache_pilot_file_cache_noop(ngx_tree_ctx_t *ctx, ngx_str_t *path) {
     return NGX_OK;
 }
 
-static ngx_int_t
-ngx_http_cache_pilot_file_cache_delete_file(ngx_tree_ctx_t *ctx,
-        ngx_str_t *path) {
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ctx->log, 0,
-                   "http file cache delete: \"%s\"", path->data);
-
-    if (ngx_delete_file(path->data) == NGX_FILE_ERROR) {
-        ngx_log_error(NGX_LOG_CRIT, ctx->log, ngx_errno,
-                      ngx_delete_file_n " \"%s\" failed", path->data);
-        return NGX_ERROR;
-    }
-
-    return NGX_OK;
-}
-
-
 struct ngx_http_cache_pilot_partial_ctx_s {
     ngx_http_file_cache_t *cache;
     u_char *key_partial;
@@ -1229,6 +1216,28 @@ struct ngx_http_cache_pilot_partial_ctx_s {
     ngx_uint_t key_len;
     ngx_uint_t purged;
 };
+
+static ngx_int_t
+ngx_http_cache_pilot_file_cache_delete_file(ngx_tree_ctx_t *ctx,
+        ngx_str_t *path) {
+    ngx_http_cache_pilot_partial_ctx_t *data;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ctx->log, 0,
+                   "http file cache delete: \"%s\"", path->data);
+
+    data = ctx->data;
+
+    if (ngx_delete_file(path->data) == NGX_FILE_ERROR) {
+        ngx_log_error(NGX_LOG_CRIT, ctx->log, ngx_errno,
+                      ngx_delete_file_n " \"%s\" failed", path->data);
+        return NGX_ERROR;
+    }
+
+    data->purged++;
+
+    return NGX_OK;
+}
+
 
 #if (NGX_CACHE_PILOT_THREADS)
 typedef struct {
@@ -1265,10 +1274,16 @@ static ngx_int_t
 ngx_http_cache_pilot_file_cache_soft_file(ngx_tree_ctx_t *ctx,
         ngx_str_t *path) {
     ngx_http_cache_pilot_partial_ctx_t *data;
+    ngx_int_t                           rc;
 
     data = ctx->data;
 
-    return ngx_http_cache_pilot_soft_path(data->cache, path, ctx->log);
+    rc = ngx_http_cache_pilot_soft_path(data->cache, path, ctx->log);
+    if (rc == NGX_OK) {
+        data->purged++;
+    }
+
+    return rc;
 }
 
 static ngx_int_t
@@ -1374,7 +1389,10 @@ ngx_http_cache_pilot_partial_completion(ngx_event_t *ev) {
     }
 
     if (ctx->rc == NGX_OK) {
-        ngx_http_cache_pilot_record_purged_wildcard_key(r, ctx->partial.purged);
+        ngx_http_cache_pilot_record_purge(r,
+                                          NGX_HTTP_CACHE_PILOT_PURGE_STATS_WILDCARD,
+                                          ctx->soft,
+                                          ctx->partial.purged);
 
         {
             ngx_http_cache_pilot_main_conf_t *pmcf_m;
@@ -1734,7 +1752,7 @@ ngx_http_cache_pilot_send_response(ngx_http_request_t *r) {
     r->headers_out.content_type.data = (u_char *) resp_ct;
 
     len = ngx_http_cache_pilot_body_templ_text_size + key[0].len + purge_path.len
-          + 128;
+          + 256;
     buf = ngx_pcalloc(r->pool, len + 1);
     if (buf == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -1745,18 +1763,28 @@ ngx_http_cache_pilot_send_response(ngx_http_request_t *r) {
                             buf_keydata);
     } else if (purge_path.len > 0) {
         last = ngx_snprintf(buf, len + 1,
-                            "{\"key\": \"%s\", \"cache_pilot\": {\"purge_path\": \"%V\", \"purged\": {\"by_key\": %ui, \"by_tag\": %ui}}}",
+                            "{\"key\": \"%s\", \"cache_pilot\": {\"purge_path\": \"%V\", \"purged\": {\"exact\": {\"hard\": %ui, \"soft\": %ui}, \"wildcard\": {\"hard\": %ui, \"soft\": %ui}, \"tag\": {\"hard\": %ui, \"soft\": %ui}, \"all\": {\"hard\": %ui, \"soft\": %ui}}}}",
                             buf_keydata, &purge_path,
-                            ctx != NULL ? ctx->purged_by_exact_key
-                                          + ctx->purged_by_wildcard_key : 0,
-                            ctx != NULL ? ctx->purged_by_tag : 0);
+                            ctx != NULL ? ctx->purged_exact_hard : 0,
+                            ctx != NULL ? ctx->purged_exact_soft : 0,
+                            ctx != NULL ? ctx->purged_wildcard_hard : 0,
+                            ctx != NULL ? ctx->purged_wildcard_soft : 0,
+                            ctx != NULL ? ctx->purged_tag_hard : 0,
+                            ctx != NULL ? ctx->purged_tag_soft : 0,
+                            ctx != NULL ? ctx->purged_all_hard : 0,
+                            ctx != NULL ? ctx->purged_all_soft : 0);
     } else {
         last = ngx_snprintf(buf, len + 1,
-                            "{\"key\": \"%s\", \"cache_pilot\": {\"purged\": {\"by_key\": %ui, \"by_tag\": %ui}}}",
+                            "{\"key\": \"%s\", \"cache_pilot\": {\"purged\": {\"exact\": {\"hard\": %ui, \"soft\": %ui}, \"wildcard\": {\"hard\": %ui, \"soft\": %ui}, \"tag\": {\"hard\": %ui, \"soft\": %ui}, \"all\": {\"hard\": %ui, \"soft\": %ui}}}}",
                             buf_keydata,
-                            ctx != NULL ? ctx->purged_by_exact_key
-                                          + ctx->purged_by_wildcard_key : 0,
-                            ctx != NULL ? ctx->purged_by_tag : 0);
+                            ctx != NULL ? ctx->purged_exact_hard : 0,
+                            ctx != NULL ? ctx->purged_exact_soft : 0,
+                            ctx != NULL ? ctx->purged_wildcard_hard : 0,
+                            ctx != NULL ? ctx->purged_wildcard_soft : 0,
+                            ctx != NULL ? ctx->purged_tag_hard : 0,
+                            ctx != NULL ? ctx->purged_tag_soft : 0,
+                            ctx != NULL ? ctx->purged_all_hard : 0,
+                            ctx != NULL ? ctx->purged_all_soft : 0);
     }
 
     len = last - buf;
@@ -1805,44 +1833,24 @@ ngx_http_cache_pilot_set_response_path(ngx_http_request_t *r,
 }
 
 void
-ngx_http_cache_pilot_set_response_stats(ngx_http_request_t *r,
-                                        ngx_uint_t purged_by_exact_key,
-                                        ngx_uint_t purged_by_wildcard_key,
-                                        ngx_uint_t purged_by_tag) {
-    ngx_http_cache_pilot_request_ctx_t  *ctx;
-    ngx_http_cache_pilot_main_conf_t    *pmcf;
-
-    ctx = ngx_http_cache_pilot_get_request_ctx(r);
-    if (ctx == NULL) {
-        return;
-    }
-
-    pmcf = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
-    NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
-                                purged_by_exact_key,
-                                purged_by_exact_key > ctx->purged_by_exact_key
-                                ? purged_by_exact_key - ctx->purged_by_exact_key
-                                : 0);
-    NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
-                                purged_by_wildcard_key,
-                                purged_by_wildcard_key > ctx->purged_by_wildcard_key
-                                ? purged_by_wildcard_key - ctx->purged_by_wildcard_key
-                                : 0);
-    NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
-                                purged_by_tag,
-                                purged_by_tag > ctx->purged_by_tag
-                                ? purged_by_tag - ctx->purged_by_tag : 0);
-
-    ctx->purged_by_exact_key = purged_by_exact_key;
-    ctx->purged_by_wildcard_key = purged_by_wildcard_key;
-    ctx->purged_by_tag = purged_by_tag;
+ngx_http_cache_pilot_record_response_purge(ngx_http_request_t *r,
+        ngx_http_cache_pilot_purge_stats_e purge_type,
+        ngx_flag_t soft,
+        ngx_uint_t count) {
+    ngx_http_cache_pilot_record_purge(r, purge_type, soft, count);
 }
 
 static void
-ngx_http_cache_pilot_record_purged_exact_key(ngx_http_request_t *r,
-                                             ngx_uint_t count) {
+ngx_http_cache_pilot_record_purge(ngx_http_request_t *r,
+                                  ngx_http_cache_pilot_purge_stats_e purge_type,
+                                  ngx_flag_t soft,
+                                  ngx_uint_t count) {
     ngx_http_cache_pilot_request_ctx_t  *ctx;
     ngx_http_cache_pilot_main_conf_t    *pmcf;
+
+    if (count == 0) {
+        return;
+    }
 
     ctx = ngx_http_cache_pilot_get_request_ctx(r);
     if (ctx == NULL) {
@@ -1850,28 +1858,56 @@ ngx_http_cache_pilot_record_purged_exact_key(ngx_http_request_t *r,
     }
 
     pmcf = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
-    NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
-                                purged_by_exact_key, count);
 
-    ctx->purged_by_exact_key += count;
-}
+    switch (purge_type) {
+    case NGX_HTTP_CACHE_PILOT_PURGE_STATS_EXACT:
+        if (soft) {
+            NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
+                                        purged_exact_soft, count);
+            ctx->purged_exact_soft += count;
+        } else {
+            NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
+                                        purged_exact_hard, count);
+            ctx->purged_exact_hard += count;
+        }
+        break;
 
-static void
-ngx_http_cache_pilot_record_purged_wildcard_key(ngx_http_request_t *r,
-                                                ngx_uint_t count) {
-    ngx_http_cache_pilot_request_ctx_t  *ctx;
-    ngx_http_cache_pilot_main_conf_t    *pmcf;
+    case NGX_HTTP_CACHE_PILOT_PURGE_STATS_WILDCARD:
+        if (soft) {
+            NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
+                                        purged_wildcard_soft, count);
+            ctx->purged_wildcard_soft += count;
+        } else {
+            NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
+                                        purged_wildcard_hard, count);
+            ctx->purged_wildcard_hard += count;
+        }
+        break;
 
-    ctx = ngx_http_cache_pilot_get_request_ctx(r);
-    if (ctx == NULL) {
-        return;
+    case NGX_HTTP_CACHE_PILOT_PURGE_STATS_TAG:
+        if (soft) {
+            NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
+                                        purged_tag_soft, count);
+            ctx->purged_tag_soft += count;
+        } else {
+            NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
+                                        purged_tag_hard, count);
+            ctx->purged_tag_hard += count;
+        }
+        break;
+
+    case NGX_HTTP_CACHE_PILOT_PURGE_STATS_ALL:
+        if (soft) {
+            NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
+                                        purged_all_soft, count);
+            ctx->purged_all_soft += count;
+        } else {
+            NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
+                                        purged_all_hard, count);
+            ctx->purged_all_hard += count;
+        }
+        break;
     }
-
-    pmcf = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
-    NGX_CACHE_PILOT_METRICS_ADD(ngx_http_cache_pilot_metrics_ctx(pmcf),
-                                purged_by_wildcard_key, count);
-
-    ctx->purged_by_wildcard_key += count;
 }
 
 static ngx_http_cache_pilot_request_ctx_t *
@@ -2335,7 +2371,10 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
                                         key_index_exact_fanout);
         }
 
-        ngx_http_cache_pilot_record_purged_exact_key(r, purged_count);
+        ngx_http_cache_pilot_record_purge(r,
+                                          NGX_HTTP_CACHE_PILOT_PURGE_STATS_EXACT,
+                                          0,
+                                          purged_count);
     }
 
     ngx_http_cache_pilot_release_updating(c);
@@ -2448,7 +2487,10 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
                                         key_index_exact_fanout);
         }
 
-        ngx_http_cache_pilot_record_purged_exact_key(r, purged_count);
+        ngx_http_cache_pilot_record_purge(r,
+                                          NGX_HTTP_CACHE_PILOT_PURGE_STATS_EXACT,
+                                          1,
+                                          purged_count);
     }
 
     ngx_http_cache_pilot_release_updating(c);
@@ -2558,6 +2600,11 @@ ngx_http_cache_pilot_all(ngx_http_request_t *r, ngx_http_file_cache_t *cache) {
     if (ngx_walk_tree(&tree, &cache->path->name) != NGX_OK) {
         return NGX_ERROR;
     }
+
+    ngx_http_cache_pilot_record_purge(r,
+                                      NGX_HTTP_CACHE_PILOT_PURGE_STATS_ALL,
+                                      cplcf->conf->soft,
+                                      ctx.purged);
 
     {
         ngx_http_cache_pilot_main_conf_t *pmcf_m;
@@ -2696,7 +2743,10 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
 
         ngx_http_cache_pilot_set_response_path(r,
                                                NGX_HTTP_CACHE_PILOT_PURGE_PATH_WILDCARD_INDEX);
-        ngx_http_cache_pilot_record_purged_wildcard_key(r, purged_count);
+        ngx_http_cache_pilot_record_purge(r,
+                                          NGX_HTTP_CACHE_PILOT_PURGE_STATS_WILDCARD,
+                                          soft,
+                                          purged_count);
 
         NGX_CACHE_PILOT_METRICS_INC(ngx_http_cache_pilot_metrics_ctx(pmcf_idx),
                                     key_index_wildcard_hits);
@@ -2806,7 +2856,10 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
         return NGX_ERROR;
     }
 
-    ngx_http_cache_pilot_record_purged_wildcard_key(r, ctx->purged);
+    ngx_http_cache_pilot_record_purge(r,
+                                      NGX_HTTP_CACHE_PILOT_PURGE_STATS_WILDCARD,
+                                      soft,
+                                      ctx->purged);
 
     {
         ngx_http_cache_pilot_main_conf_t *pmcf_m;
