@@ -32,20 +32,12 @@ our $config = <<'_EOC_';
         proxy_cache                 test_cache;
         proxy_cache_key             $1$is_args$args;
         proxy_cache_purge           1;
-        cache_pilot_purge_response_type   html;
     }
 
     location ~ /purge_json(/.*) {
         proxy_cache                 test_cache;
         proxy_cache_key             $1$is_args$args;
         proxy_cache_purge           1;
-    }
-
-    location ~ /purge_xml(/.*) {
-        proxy_cache                 test_cache;
-        proxy_cache_key             $1$is_args$args;
-        proxy_cache_purge           1;
-        cache_pilot_purge_response_type   xml;
     }
 
     location ~ /purge_text(/.*) {
@@ -113,15 +105,15 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 3: purge from cache
+=== TEST 3: purge from cache (default JSON response)
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- request
 PURGE /purge/proxy/passwd
 --- error_code: 200
 --- response_headers
-Content-Type: text/html
---- response_body_like: Successful purge
+Content-Type: application/json
+--- response_body_like: ^\{\"key\": \"\/proxy\/passwd\"\}$
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -249,35 +241,6 @@ PURGE /purge_json/proxy/passwd?t=7
 --- response_headers
 Content-Type: application/json
 --- response_body_like: ^\{\"key\": \"\/proxy\/passwd\?t=7\"\}$
---- timeout: 10
---- no_error_log eval
-qr/\[(warn|error|crit|alert|emerg)\]/
---- skip_nginx2: 4: < 0.8.3 or < 0.7.62
-
-=== TEST 8-prepare: prepare purge
---- http_config eval: $::http_config
---- config eval: $::config
---- request
-GET /proxy/passwd?t=8
---- error_code: 200
---- response_headers
-Content-Type: text/plain
---- response_body_like: root
---- timeout: 10
---- no_error_log eval
-qr/\[(warn|error|crit|alert|emerg)\]/
---- skip_nginx2: 4: < 0.8.3 or < 0.7.62
-
-
-=== TEST 8: get a XML response after purge from cache
---- http_config eval: $::http_config
---- config eval: $::config
---- request
-PURGE /purge_xml/proxy/passwd?t=8
---- error_code: 200
---- response_headers
-Content-Type: text/xml
---- response_body_like: \<\?xml version=\"1.0\" encoding=\"UTF-8\"\?><status><Key><\!\[CDATA\[\/proxy\/passwd\?t=8\]\]><\/Key>
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/

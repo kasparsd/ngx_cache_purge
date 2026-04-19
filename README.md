@@ -219,7 +219,7 @@ http {
 
 ### Response types
 
-Use `cache_pilot_purge_response_type` to switch between `html`, `json`, `xml`, and `text` responses in the scope where the purge response is generated.
+Use `cache_pilot_purge_response_type` to switch between `json` and `text` responses in the scope where the purge response is generated.
 
 ### Cache tags
 
@@ -273,8 +273,8 @@ For dedicated purge locations, configure the cache zone with `*_cache`, the purg
 
 #### `cache_pilot_purge_response_type`
 
-- **syntax**: `cache_pilot_purge_response_type html|json|xml|text`
-- **default**: `html`
+- **syntax**: `cache_pilot_purge_response_type json|text`
+- **default**: `json`
 - **context**: `http`, `server`, `location`
 
 Set the response type returned after a purge.
@@ -282,8 +282,8 @@ Set the response type returned after a purge.
 When `json` is selected, successful purges may also include `cache_pilot.purge_path`
 to describe the request path that completed the purge, for example
 `filesystem-fallback`, `key-prefix-index`, `reused-persisted-index`,
-`bootstrapped-on-demand`, or `exact-key-fanout`. HTML, XML, and text responses
-keep their existing body formats.
+`bootstrapped-on-demand`, or `exact-key-fanout`. Text responses keep the
+existing plain body format.
 
 #### `cache_pilot_purge_mode_header`
 

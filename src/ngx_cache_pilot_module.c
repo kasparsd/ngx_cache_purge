@@ -39,35 +39,23 @@
     #error This module cannot be build against an unknown nginx version.
 #endif
 
-#define NGX_RESPONSE_TYPE_HTML 1
-#define NGX_RESPONSE_TYPE_XML  2
-#define NGX_RESPONSE_TYPE_JSON 3
-#define NGX_RESPONSE_TYPE_TEXT 4
+#define NGX_RESPONSE_TYPE_JSON 1
+#define NGX_RESPONSE_TYPE_TEXT 2
 
 static const char ngx_http_cache_pilot_content_type_json[] = "application/json";
-static const char ngx_http_cache_pilot_content_type_html[] = "text/html";
-static const char ngx_http_cache_pilot_content_type_xml[]  = "text/xml";
 static const char ngx_http_cache_pilot_content_type_text[] = "text/plain";
 
 static size_t ngx_http_cache_pilot_content_type_json_size = sizeof(ngx_http_cache_pilot_content_type_json);
-static size_t ngx_http_cache_pilot_content_type_html_size = sizeof(ngx_http_cache_pilot_content_type_html);
-static size_t ngx_http_cache_pilot_content_type_xml_size = sizeof(ngx_http_cache_pilot_content_type_xml);
 static size_t ngx_http_cache_pilot_content_type_text_size = sizeof(ngx_http_cache_pilot_content_type_text);
 
 static const char ngx_http_cache_pilot_body_templ_json[] = "{\"key\": \"%s\"}";
 static const char ngx_http_cache_pilot_body_templ_json_with_path[] =
     "{\"key\": \"%s\", \"cache_pilot\": {\"purge_path\": \"%s\"}}";
-static const char ngx_http_cache_pilot_body_templ_html[] =
-    "<html><head><title>Successful purge</title></head><body bgcolor=\"white\"><center><h1>Successful purge</h1><p>Key : %s</p></center></body></html>";
-static const char ngx_http_cache_pilot_body_templ_xml[] =
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><status><Key><![CDATA[%s]]></Key></status>";
 static const char ngx_http_cache_pilot_body_templ_text[] = "Key:%s\n";
 
 static size_t ngx_http_cache_pilot_body_templ_json_size = sizeof(ngx_http_cache_pilot_body_templ_json);
 static size_t ngx_http_cache_pilot_body_templ_json_with_path_size =
     sizeof(ngx_http_cache_pilot_body_templ_json_with_path);
-static size_t ngx_http_cache_pilot_body_templ_html_size = sizeof(ngx_http_cache_pilot_body_templ_html);
-static size_t ngx_http_cache_pilot_body_templ_xml_size = sizeof(ngx_http_cache_pilot_body_templ_xml);
 static size_t ngx_http_cache_pilot_body_templ_text_size = sizeof(ngx_http_cache_pilot_body_templ_text);
 
 #if (NGX_HTTP_CACHE)
@@ -193,8 +181,6 @@ ngx_int_t   ngx_http_cache_pilot_init_process(ngx_cycle_t *cycle);
 void        ngx_http_cache_pilot_exit_process(ngx_cycle_t *cycle);
 
 static ngx_conf_enum_t  ngx_http_cache_pilot_response_types[] = {
-    { ngx_string("html"), NGX_RESPONSE_TYPE_HTML },
-    { ngx_string("xml"),  NGX_RESPONSE_TYPE_XML  },
     { ngx_string("json"), NGX_RESPONSE_TYPE_JSON },
     { ngx_string("text"), NGX_RESPONSE_TYPE_TEXT },
     { ngx_null_string,    0 }
@@ -1727,13 +1713,6 @@ ngx_http_cache_pilot_send_response(ngx_http_request_t *r) {
         }
         break;
 
-    case NGX_RESPONSE_TYPE_XML:
-        resp_ct = ngx_http_cache_pilot_content_type_xml;
-        resp_ct_size = ngx_http_cache_pilot_content_type_xml_size;
-        resp_body = ngx_http_cache_pilot_body_templ_xml;
-        resp_body_size = ngx_http_cache_pilot_body_templ_xml_size;
-        break;
-
     case NGX_RESPONSE_TYPE_TEXT:
         resp_ct = ngx_http_cache_pilot_content_type_text;
         resp_ct_size = ngx_http_cache_pilot_content_type_text_size;
@@ -1742,11 +1721,10 @@ ngx_http_cache_pilot_send_response(ngx_http_request_t *r) {
         break;
 
     default:
-    case NGX_RESPONSE_TYPE_HTML:
-        resp_ct = ngx_http_cache_pilot_content_type_html;
-        resp_ct_size = ngx_http_cache_pilot_content_type_html_size;
-        resp_body = ngx_http_cache_pilot_body_templ_html;
-        resp_body_size = ngx_http_cache_pilot_body_templ_html_size;
+        resp_ct = ngx_http_cache_pilot_content_type_json;
+        resp_ct_size = ngx_http_cache_pilot_content_type_json_size;
+        resp_body = ngx_http_cache_pilot_body_templ_json;
+        resp_body_size = ngx_http_cache_pilot_body_templ_json_size;
         break;
     }
 
@@ -3412,7 +3390,7 @@ ngx_http_cache_pilot_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
         conf->cache_index = 1;
     }
 
-    ngx_conf_merge_uint_value(conf->resptype, prev->resptype, NGX_RESPONSE_TYPE_HTML);
+    ngx_conf_merge_uint_value(conf->resptype, prev->resptype, NGX_RESPONSE_TYPE_JSON);
     ngx_conf_merge_value(conf->cache_index, prev->cache_index, 0);
     ngx_conf_merge_str_value(conf->purge_mode_header, prev->purge_mode_header, "");
 
