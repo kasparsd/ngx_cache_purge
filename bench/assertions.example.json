@@ -16,87 +16,12 @@
         "min": 9
       }
     },
-    "exact-indexed": {
-      "get.rps": {
-        "min": 3000
-      },
-      "get.latency_us.p95": {
-        "max": 30000
-      },
-      "purge.rps": {
-        "min": 9
-      },
-      "index_report.ready_after": {
-        "min": 1
-      },
-      "index_report.ready_degraded": {
-        "max": 0
-      }
-    },
-    "exact-fanout": {
-      "index_report.ready_after": {
-        "min": 1
-      },
-      "index_report.used_assist": {
-        "min": 1
-      },
-      "index_report.assist_missed": {
-        "max": 0
-      },
-      "index_report.exact_fanout_delta": {
-        "min": 1
-      },
-      "index_report.sqlite_prepare_failed": {
-        "max": 0
-      },
-      "index_report.sqlite_locked": {
-        "max": 0
-      },
-      "index_report.sqlite_no_table": {
-        "max": 0
-      }
-    },
     "wild": {
       "get.rps": {
         "min": 2500
       },
       "get.latency_us.p95": {
         "max": 40000
-      }
-    },
-    "wild-indexed": {
-      "get.rps": {
-        "min": 2500
-      },
-      "get.latency_us.p95": {
-        "max": 40000
-      },
-      "index_report.wildcard_preflight_attempted": {
-        "min": 1
-      },
-      "index_report.wildcard_preflight_succeeded": {
-        "min": 1
-      },
-      "index_report.ready_after": {
-        "min": 1
-      },
-      "index_report.used_assist": {
-        "min": 1
-      },
-      "index_report.assist_missed": {
-        "max": 0
-      },
-      "index_report.wildcard_prefix_hits_delta": {
-        "min": 1
-      },
-      "index_report.sqlite_prepare_failed": {
-        "max": 0
-      },
-      "index_report.sqlite_locked": {
-        "max": 0
-      },
-      "index_report.sqlite_no_table": {
-        "max": 0
       }
     },
     "tag-sqlite": {
