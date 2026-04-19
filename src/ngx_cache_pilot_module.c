@@ -2560,6 +2560,61 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     soft = ngx_http_cache_pilot_request_mode(r, cplcf->conf->soft);
 
+    /* Index-first path: use key-prefix index to avoid filesystem walk. */
+    used_index = 0;
+    if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_idx,
+            &tag_zone, &reader) == NGX_OK) {
+        idx_paths = NULL;
+        if (ngx_http_cache_index_store_collect_paths_by_key_prefix(reader,
+                r->pool, &tag_zone->zone_name, &key_prefix,
+                &idx_paths, r->connection->log) == NGX_OK
+                && idx_paths != NULL && idx_paths->nelts > 0) {
+            ngx_str_t *ip = idx_paths->elts;
+
+            ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                           "cache_tag wildcard index candidate zone:\"%V\" prefix:\"%V\" matches:%ui",
+                           &tag_zone->zone_name, &key_prefix, idx_paths->nelts);
+
+            for (k = 0; k < idx_paths->nelts; k++) {
+                purge_rc = ngx_http_cache_pilot_by_path(cache, &ip[k], soft,
+                                                        r->connection->log);
+                if (purge_rc == NGX_OK) {
+                    used_index = 1;
+                    continue;
+                }
+
+                if (purge_rc != NGX_DECLINED) {
+                    return NGX_ERROR;
+                }
+            }
+        } else {
+            ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                           "cache_tag wildcard index empty zone:\"%V\" prefix:\"%V\"",
+                           &tag_zone->zone_name, &key_prefix);
+        }
+    }
+
+    if (used_index) {
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "cache_tag wildcard index hit prefix:\"%V\"",
+                       &key_prefix);
+
+        NGX_CACHE_PILOT_METRICS_INC(pmcf_idx->metrics,
+                                    key_index_wildcard_hits);
+
+        {
+            ngx_http_cache_pilot_main_conf_t *pmcf_m;
+            pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
+            if (soft) {
+                NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_wildcard_soft);
+            } else {
+                NGX_CACHE_PILOT_METRICS_INC(pmcf_m->metrics, purges_wildcard_hard);
+            }
+        }
+
+        return NGX_OK;
+    }
+
 #if (NGX_CACHE_PILOT_THREADS)
     /* If a thread pool is available, offload the blocking directory walk.
      * Falls through to the synchronous path when no pool is configured. */
@@ -2624,50 +2679,24 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
         }
     }
 
-    /* Index-first path: use key-prefix index to avoid filesystem walk. */
-    used_index = 0;
-    if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_idx,
-            &tag_zone, &reader) == NGX_OK) {
-        idx_paths = NULL;
-        if (ngx_http_cache_index_store_collect_paths_by_key_prefix(reader,
-                r->pool, &tag_zone->zone_name, &key_prefix,
-                &idx_paths, r->connection->log) == NGX_OK
-                && idx_paths != NULL && idx_paths->nelts > 0) {
-            ngx_str_t *ip = idx_paths->elts;
-            for (k = 0; k < idx_paths->nelts; k++) {
-                purge_rc = ngx_http_cache_pilot_by_path(cache, &ip[k], soft,
-                                                        r->connection->log);
-                if (purge_rc == NGX_OK) {
-                    used_index = 1;
-                    continue;
-                }
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "cache_tag wildcard fallback walk prefix:\"%V\"",
+                   &key_prefix);
 
-                if (purge_rc != NGX_DECLINED) {
-                    return NGX_ERROR;
-                }
-            }
-        }
-    }
+    /* Walk the tree and remove all the files matching key_partial */
+    tree.init_handler = NULL;
+    tree.file_handler = soft
+                        ? ngx_http_cache_pilot_file_cache_soft_partial_file
+                        : ngx_http_cache_pilot_file_cache_delete_partial_file;
+    tree.pre_tree_handler = ngx_http_cache_pilot_file_cache_noop;
+    tree.post_tree_handler = ngx_http_cache_pilot_file_cache_noop;
+    tree.spec_handler = ngx_http_cache_pilot_file_cache_noop;
+    tree.data = ctx;
+    tree.alloc = 0;
+    tree.log = ngx_cycle->log;
 
-    if (!used_index) {
-        /* Walk the tree and remove all the files matching key_partial */
-        tree.init_handler = NULL;
-        tree.file_handler = soft
-                            ? ngx_http_cache_pilot_file_cache_soft_partial_file
-                            : ngx_http_cache_pilot_file_cache_delete_partial_file;
-        tree.pre_tree_handler = ngx_http_cache_pilot_file_cache_noop;
-        tree.post_tree_handler = ngx_http_cache_pilot_file_cache_noop;
-        tree.spec_handler = ngx_http_cache_pilot_file_cache_noop;
-        tree.data = ctx;
-        tree.alloc = 0;
-        tree.log = ngx_cycle->log;
-
-        if (ngx_walk_tree(&tree, &cache->path->name) != NGX_OK) {
-            return NGX_ERROR;
-        }
-    } else {
-        NGX_CACHE_PILOT_METRICS_INC(pmcf_idx->metrics,
-                                    key_index_wildcard_hits);
+    if (ngx_walk_tree(&tree, &cache->path->name) != NGX_OK) {
+        return NGX_ERROR;
     }
 
     {

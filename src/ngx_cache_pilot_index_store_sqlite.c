@@ -597,6 +597,10 @@ ngx_http_cache_index_store_sqlite_collect_paths_by_key_prefix(
     sqlite3_bind_text(stmt, 2, (const char *) prefix->data, prefix->len,
                       SQLITE_TRANSIENT);
 
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, log, 0,
+                   "cache_tag key-prefix lookup zone:\"%V\" prefix:\"%V\"",
+                   zone_name, prefix);
+
     while ((rc = ngx_http_cache_index_store_sqlite_step(stmt, store->u.sqlite.db,
                  log, "key-prefix-lookup")) == SQLITE_ROW) {
         text = sqlite3_column_text(stmt, 0);
@@ -626,6 +630,10 @@ ngx_http_cache_index_store_sqlite_collect_paths_by_key_prefix(
                       sqlite3_errmsg(store->u.sqlite.db));
         return NGX_ERROR;
     }
+
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, log, 0,
+                   "cache_tag key-prefix lookup done zone:\"%V\" prefix:\"%V\" matches:%ui",
+                   zone_name, prefix, result->nelts);
 
     *paths = result;
     return NGX_OK;

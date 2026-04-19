@@ -31,6 +31,12 @@ static ngx_int_t ngx_http_cache_index_add_watch_recursive(
     ngx_http_cache_index_store_t *store, ngx_http_cache_index_zone_t *zone,
     ngx_str_t *path, ngx_cycle_t *cycle, ngx_uint_t index_mode,
     ngx_array_t *pending_ops, time_t min_mtime);
+static ngx_int_t ngx_http_cache_index_scan_zone(
+    ngx_http_cache_index_store_t *store, ngx_http_cache_index_zone_t *zone,
+    ngx_cycle_t *cycle);
+static ngx_int_t ngx_http_cache_index_scan_recursive(
+    ngx_http_cache_index_store_t *store, ngx_http_cache_index_zone_t *zone,
+    ngx_pool_t *pool, ngx_str_t *path, ngx_cycle_t *cycle, time_t min_mtime);
 static ngx_int_t ngx_http_cache_index_process_events(ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_cache_index_join_path(ngx_pool_t *pool, ngx_str_t *base,
         const char *name, ngx_str_t *out);
@@ -43,12 +49,6 @@ static ngx_int_t ngx_http_cache_index_queue_drain(ngx_pool_t *pool,
         ngx_array_t *pending_ops, ngx_log_t *log);
 static ngx_int_t ngx_http_cache_index_apply_pending_ops(
     ngx_http_cache_index_store_t *store, ngx_array_t *pending_ops, ngx_log_t *log);
-static ngx_int_t ngx_http_cache_index_scan_zone(
-    ngx_http_cache_index_store_t *store, ngx_http_cache_index_zone_t *zone,
-    ngx_cycle_t *cycle);
-static ngx_int_t ngx_http_cache_index_mark_zone_ready(
-    ngx_http_cache_index_store_t *store, ngx_http_cache_index_zone_t *zone,
-    ngx_log_t *log);
 
 #define NGX_HTTP_CACHE_TAG_INDEX_NONE    0
 #define NGX_HTTP_CACHE_TAG_INDEX_DIRECT  1
@@ -57,22 +57,18 @@ static ngx_int_t ngx_http_cache_index_mark_zone_ready(
 ngx_int_t
 ngx_http_cache_index_queue_init_conf(ngx_conf_t *cf,
                                      ngx_http_cache_pilot_main_conf_t *pmcf) {
-    static ngx_str_t  queue_name = ngx_string("ngx_cache_pilot_tag_queue");
     ngx_http_cache_index_queue_ctx_t  *ctx;
+    ngx_str_t                          queue_name = ngx_string("cache_tag_queue");
 
-    if (pmcf->queue_zone != NULL) {
-        return NGX_OK;
+    ctx = ngx_pcalloc(cf->pool, sizeof(ngx_http_cache_index_queue_ctx_t));
+    if (ctx == NULL) {
+        return NGX_ERROR;
     }
 
     pmcf->queue_zone = ngx_shared_memory_add(cf, &queue_name,
                        pmcf->queue_shm_size,
                        &ngx_http_cache_pilot_module);
     if (pmcf->queue_zone == NULL) {
-        return NGX_ERROR;
-    }
-
-    ctx = ngx_pcalloc(cf->pool, sizeof(ngx_http_cache_index_queue_ctx_t));
-    if (ctx == NULL) {
         return NGX_ERROR;
     }
 
@@ -228,37 +224,16 @@ ngx_int_t
 ngx_http_cache_index_bootstrap_zone(ngx_http_cache_index_store_t *store,
                                     ngx_http_cache_index_zone_t *zone,
                                     ngx_cycle_t *cycle) {
+    ngx_http_cache_index_zone_state_t  state;
+
     if (ngx_http_cache_index_scan_zone(store, zone, cycle) != NGX_OK) {
         return NGX_ERROR;
     }
 
-    return ngx_http_cache_index_mark_zone_ready(store, zone, cycle->log);
-}
-
-static ngx_int_t
-ngx_http_cache_index_scan_zone(ngx_http_cache_index_store_t *store,
-                               ngx_http_cache_index_zone_t *zone,
-                               ngx_cycle_t *cycle) {
-    if (zone == NULL || zone->cache == NULL || zone->cache->path == NULL) {
-        return NGX_DECLINED;
-    }
-
-    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
-                  "cache_tag bootstrap scan zone \"%V\"", &zone->zone_name);
-
-    if (ngx_http_cache_index_store_begin_batch(store, cycle->log) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
-    if (ngx_http_cache_index_add_watch_recursive(store, zone,
-            &zone->cache->path->name, cycle, NGX_HTTP_CACHE_TAG_INDEX_DIRECT,
-            NULL, 0) != NGX_OK) {
-        ngx_http_cache_index_store_rollback_batch(store, cycle->log);
-        return NGX_ERROR;
-    }
-
-    if (ngx_http_cache_index_store_commit_batch(store, cycle->log) != NGX_OK) {
-        ngx_http_cache_index_store_rollback_batch(store, cycle->log);
+    state.bootstrap_complete = 1;
+    state.last_bootstrap_at = ngx_time();
+    if (ngx_http_cache_index_store_set_zone_state(store, &zone->zone_name, &state,
+            cycle->log) != NGX_OK) {
         return NGX_ERROR;
     }
 
@@ -266,37 +241,41 @@ ngx_http_cache_index_scan_zone(ngx_http_cache_index_store_t *store,
 }
 
 static ngx_int_t
-ngx_http_cache_index_mark_zone_ready(ngx_http_cache_index_store_t *store,
-                                     ngx_http_cache_index_zone_t *zone,
-                                     ngx_log_t *log) {
-    ngx_http_cache_index_zone_state_t  state;
+ngx_http_cache_index_scan_zone(ngx_http_cache_index_store_t *store,
+                               ngx_http_cache_index_zone_t *zone,
+                               ngx_cycle_t *cycle) {
+    ngx_pool_t *pool;
 
     if (zone == NULL || zone->cache == NULL || zone->cache->path == NULL) {
         return NGX_DECLINED;
     }
 
-    state.bootstrap_complete = 1;
-    state.last_bootstrap_at = ngx_time();
+    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                  "cache_tag bootstrap zone \"%V\"", &zone->zone_name);
 
-    if (ngx_http_cache_index_store_begin_batch(store, log) != NGX_OK) {
+    if (ngx_http_cache_index_store_begin_batch(store, cycle->log) != NGX_OK) {
         return NGX_ERROR;
     }
 
-    if (ngx_http_cache_index_store_set_zone_state(store, &zone->zone_name, &state,
-            log) != NGX_OK) {
-        ngx_http_cache_index_store_rollback_batch(store, log);
+    pool = ngx_create_pool(4096, cycle->log);
+    if (pool == NULL) {
+        ngx_http_cache_index_store_rollback_batch(store, cycle->log);
         return NGX_ERROR;
     }
 
-    ngx_http_cache_index_zone_state_cache_set(zone->cache, &state);
-
-    if (ngx_http_cache_index_store_commit_batch(store, log) != NGX_OK) {
-        ngx_http_cache_index_store_rollback_batch(store, log);
+    if (ngx_http_cache_index_scan_recursive(store, zone, pool,
+                                            &zone->cache->path->name, cycle, 0) != NGX_OK) {
+        ngx_destroy_pool(pool);
+        ngx_http_cache_index_store_rollback_batch(store, cycle->log);
         return NGX_ERROR;
     }
 
-    ngx_log_error(NGX_LOG_NOTICE, log, 0,
-                  "cache_tag bootstrap ready zone \"%V\"", &zone->zone_name);
+    ngx_destroy_pool(pool);
+
+    if (ngx_http_cache_index_store_commit_batch(store, cycle->log) != NGX_OK) {
+        ngx_http_cache_index_store_rollback_batch(store, cycle->log);
+        return NGX_ERROR;
+    }
 
     return NGX_OK;
 }
@@ -599,6 +578,68 @@ ngx_http_cache_index_add_watch_recursive(ngx_http_cache_index_store_t *store,
     return NGX_OK;
 }
 
+static ngx_int_t
+ngx_http_cache_index_scan_recursive(ngx_http_cache_index_store_t *store,
+                                    ngx_http_cache_index_zone_t *zone,
+                                    ngx_pool_t *pool, ngx_str_t *path, ngx_cycle_t *cycle,
+                                    time_t min_mtime) {
+    DIR            *dir;
+    struct dirent  *entry;
+    ngx_str_t       child;
+    ngx_file_info_t fi;
+
+    dir = opendir((const char *) path->data);
+    if (dir == NULL) {
+        return NGX_DECLINED;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (ngx_strcmp(entry->d_name, ".") == 0
+                || ngx_strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        if (ngx_http_cache_index_join_path(pool, path, entry->d_name, &child)
+                != NGX_OK) {
+            closedir(dir);
+            return NGX_ERROR;
+        }
+
+        if (entry->d_type == DT_DIR) {
+            if (ngx_http_cache_index_scan_recursive(store, zone, pool, &child, cycle,
+                                                    min_mtime) == NGX_ERROR) {
+                closedir(dir);
+                return NGX_ERROR;
+            }
+            continue;
+        }
+
+        if (entry->d_type != DT_REG && entry->d_type != DT_UNKNOWN) {
+            continue;
+        }
+
+        if (min_mtime > 0) {
+            if (ngx_file_info(child.data, &fi) == NGX_FILE_ERROR) {
+                continue;
+            }
+
+            if (ngx_file_mtime(&fi) <= min_mtime) {
+                continue;
+            }
+        }
+
+        if (ngx_http_cache_index_store_process_file(store, &zone->zone_name,
+                &child, zone->headers, cycle->log) == NGX_ERROR) {
+            closedir(dir);
+            return NGX_ERROR;
+        }
+    }
+
+    closedir(dir);
+
+    return NGX_OK;
+}
+
 /* Read all pending inotify events into pending_ops.  pool is used for path
  * string allocation.  Returns NGX_OK even if no events were available. */
 static ngx_int_t
@@ -810,9 +851,16 @@ ngx_http_cache_index_process_events(ngx_cycle_t *cycle) {
  * synchronous bootstrap path and from the thread-pool completion handler. */
 static ngx_int_t
 ngx_http_cache_index_arm_watch(ngx_cycle_t *cycle) {
+    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                  "cache_tag arm_watch begin");
+
     ngx_http_cache_index_watch_runtime.inotify_conn->read->handler =
         ngx_http_cache_index_inotify_handler;
     ngx_http_cache_index_watch_runtime.inotify_conn->read->log = cycle->log;
+
+    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                  "cache_tag arm_watch add read event");
+
     if (ngx_add_event(ngx_http_cache_index_watch_runtime.inotify_conn->read,
                       NGX_READ_EVENT, 0) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
@@ -823,9 +871,17 @@ ngx_http_cache_index_arm_watch(ngx_cycle_t *cycle) {
     ngx_http_cache_index_watch_runtime.timer.handler =
         ngx_http_cache_index_timer_handler;
     ngx_http_cache_index_watch_runtime.timer.log = cycle->log;
-    ngx_http_cache_index_watch_runtime.timer.data = NULL;
+    ngx_http_cache_index_watch_runtime.timer.data =
+        ngx_http_cache_index_watch_runtime.inotify_conn;
     ngx_http_cache_index_watch_runtime.timer.cancelable = 1;
+
+    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                  "cache_tag arm_watch add timer");
+
     ngx_add_timer(&ngx_http_cache_index_watch_runtime.timer, 250);
+
+    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                  "cache_tag arm_watch done");
 
     return NGX_OK;
 }
@@ -835,7 +891,6 @@ ngx_http_cache_index_arm_watch(ngx_cycle_t *cycle) {
 typedef struct {
     ngx_cycle_t                       *cycle;
     ngx_http_cache_pilot_main_conf_t  *pmcf;
-    ngx_array_t                       *bootstrapped_zones;
     ngx_int_t                          rc;
 } ngx_http_cache_index_bootstrap_ctx_t;
 
@@ -847,7 +902,6 @@ ngx_http_cache_index_bootstrap_thread(void *data, ngx_log_t *log) {
     ngx_http_cache_index_bootstrap_ctx_t  *ctx;
     ngx_http_cache_index_store_t          *writer;
     ngx_http_cache_index_zone_t           *zone;
-    ngx_http_cache_index_zone_t          **bootstrapped_zone;
     ngx_http_cache_index_zone_state_t      state;
     ngx_uint_t                           i;
 
@@ -879,19 +933,28 @@ ngx_http_cache_index_bootstrap_thread(void *data, ngx_log_t *log) {
         }
 
         if (state.bootstrap_complete) {
+            ngx_pool_t *pool;
+
             ngx_log_error(NGX_LOG_NOTICE, log, 0,
                           "cache_tag reusing persisted index for zone \"%V\"",
                           &zone[i].zone_name);
-            if (ngx_http_cache_index_add_watch_recursive(writer, &zone[i],
-                    &zone[i].cache->path->name, ctx->cycle,
-                    NGX_HTTP_CACHE_TAG_INDEX_DIRECT, NULL,
-                    state.last_bootstrap_at) == NGX_ERROR) {
+            pool = ngx_create_pool(4096, log);
+            if (pool == NULL) {
+                ctx->rc = NGX_ERROR;
+                continue;
+            }
+
+            if (ngx_http_cache_index_scan_recursive(writer, &zone[i], pool,
+                                                    &zone[i].cache->path->name, ctx->cycle,
+                                                    state.last_bootstrap_at) == NGX_ERROR) {
                 ngx_log_error(NGX_LOG_WARN, log, 0,
-                              "cache_tag: watch setup failed for zone \"%V\" "
+                              "cache_tag: bootstrap scan failed for zone \"%V\" "
                               "in bootstrap thread, continuing",
                               &zone[i].zone_name);
                 ctx->rc = NGX_ERROR;
             }
+
+            ngx_destroy_pool(pool);
 
             state.last_bootstrap_at = ngx_time();
             if (ngx_http_cache_index_store_set_zone_state(writer,
@@ -905,26 +968,14 @@ ngx_http_cache_index_bootstrap_thread(void *data, ngx_log_t *log) {
             continue;
         }
 
-        if (ngx_http_cache_index_scan_zone(writer, &zone[i], ctx->cycle)
-                != NGX_OK) {
+        if (ngx_http_cache_index_bootstrap_zone(writer, &zone[i],
+                                                ctx->cycle) != NGX_OK) {
             ngx_log_error(NGX_LOG_WARN, log, 0,
                           "cache_tag: bootstrap failed for zone \"%V\" "
                           "in bootstrap thread, deferring until first request",
                           &zone[i].zone_name);
             ctx->rc = NGX_ERROR;
-            continue;
         }
-
-        bootstrapped_zone = ngx_array_push(ctx->bootstrapped_zones);
-        if (bootstrapped_zone == NULL) {
-            ngx_log_error(NGX_LOG_WARN, log, 0,
-                          "cache_tag: failed to queue ready transition for zone \"%V\"",
-                          &zone[i].zone_name);
-            ctx->rc = NGX_ERROR;
-            continue;
-        }
-
-        *bootstrapped_zone = &zone[i];
     }
 
     ngx_http_cache_index_store_close(writer);
@@ -935,10 +986,7 @@ ngx_http_cache_index_bootstrap_thread(void *data, ngx_log_t *log) {
 static void
 ngx_http_cache_index_bootstrap_complete(ngx_event_t *ev) {
     ngx_http_cache_index_bootstrap_ctx_t  *ctx;
-    ngx_http_cache_index_store_t          *writer;
-    ngx_http_cache_index_zone_t          **bootstrapped_zone;
     ngx_cycle_t                         *cycle;
-    ngx_uint_t                           i;
 
     ctx = ev->data;
     cycle = ctx->cycle;
@@ -950,32 +998,30 @@ ngx_http_cache_index_bootstrap_complete(ngx_event_t *ev) {
         /* Non-fatal: inotify will track changes going forward. */
     }
 
+    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                  "cache_tag bootstrap completion before arm_watch");
+
     if (ngx_http_cache_index_arm_watch(cycle) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
                       "cache_tag: failed to arm inotify after bootstrap");
         return;
     }
 
-    writer = ngx_http_cache_index_store_writer();
-    if (writer == NULL) {
+    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                  "cache_tag bootstrap completion before state sync");
+
+    if (ngx_http_cache_index_zone_state_cache_sync(cycle, ctx->pmcf) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
-                      "cache_tag: missing writer while finalizing bootstrap readiness");
-        return;
+                      "cache_tag: failed to sync zone state cache after bootstrap");
     }
 
-    if (ctx->bootstrapped_zones != NULL) {
-        bootstrapped_zone = ctx->bootstrapped_zones->elts;
-        for (i = 0; i < ctx->bootstrapped_zones->nelts; i++) {
-            if (ngx_http_cache_index_mark_zone_ready(writer,
-                    bootstrapped_zone[i], cycle->log) != NGX_OK) {
-                ngx_log_error(NGX_LOG_ERR, cycle->log, 0,
-                              "cache_tag: failed to finalize bootstrap readiness for zone \"%V\"",
-                              &bootstrapped_zone[i]->zone_name);
-            }
-        }
-    }
+    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                  "cache_tag bootstrap completion activating watch runtime");
 
     ngx_http_cache_index_watch_runtime.active = 1;
+
+    ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
+                  "cache_tag bootstrap completion done");
 }
 
 #endif /* NGX_CACHE_PILOT_THREADS */
@@ -1061,6 +1107,19 @@ ngx_http_cache_index_init_runtime(ngx_cycle_t *cycle,
         return NGX_ERROR;
     }
 
+    zone = pmcf->zones->elts;
+    for (i = 0; i < pmcf->zones->nelts; i++) {
+        if (zone[i].cache == NULL || zone[i].cache->path == NULL) {
+            continue;
+        }
+
+        if (ngx_http_cache_index_add_watch_recursive(NULL, &zone[i],
+                &zone[i].cache->path->name, cycle,
+                NGX_HTTP_CACHE_TAG_INDEX_NONE, NULL, 0) == NGX_ERROR) {
+            return NGX_ERROR;
+        }
+    }
+
 #if (NGX_CACHE_PILOT_THREADS)
     /* Try to offload the blocking bootstrap walk to the default thread pool.
      * If the thread pool is unavailable (nginx not built with --with-threads,
@@ -1073,18 +1132,11 @@ ngx_http_cache_index_init_runtime(ngx_cycle_t *cycle,
             bctx = task->ctx;
             bctx->cycle = cycle;
             bctx->pmcf  = pmcf;
-            bctx->bootstrapped_zones = ngx_array_create(cycle->pool,
-                    pmcf->zones->nelts > 0 ? pmcf->zones->nelts : 1,
-                    sizeof(ngx_http_cache_index_zone_t *));
             bctx->rc    = NGX_OK;
-            if (bctx->bootstrapped_zones != NULL) {
-                task->handler       = ngx_http_cache_index_bootstrap_thread;
-                task->event.handler = ngx_http_cache_index_bootstrap_complete;
-                task->event.data    = bctx;
-            }
-
-            if (bctx->bootstrapped_zones != NULL
-                    && ngx_thread_task_post(tp, task) == NGX_OK) {
+            task->handler       = ngx_http_cache_index_bootstrap_thread;
+            task->event.handler = ngx_http_cache_index_bootstrap_complete;
+            task->event.data    = bctx;
+            if (ngx_thread_task_post(tp, task) == NGX_OK) {
                 /* Async path: arm_watch and active=1 happen in completion
                  * handler once the thread finishes. */
                 ngx_http_cache_index_watch_runtime.initialized = 1;
@@ -1115,18 +1167,26 @@ ngx_http_cache_index_init_runtime(ngx_cycle_t *cycle,
         }
 
         if (state.bootstrap_complete) {
+            ngx_pool_t *pool;
+
             ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
                           "cache_tag reusing persisted index for zone \"%V\"",
                           &zone[i].zone_name);
-            if (ngx_http_cache_index_add_watch_recursive(writer, &zone[i],
-                    &zone[i].cache->path->name, cycle,
-                    NGX_HTTP_CACHE_TAG_INDEX_DIRECT, NULL,
-                    state.last_bootstrap_at) == NGX_ERROR) {
+            pool = ngx_create_pool(4096, cycle->log);
+            if (pool == NULL) {
+                return NGX_ERROR;
+            }
+
+            if (ngx_http_cache_index_scan_recursive(writer, &zone[i], pool,
+                                                    &zone[i].cache->path->name, cycle,
+                                                    state.last_bootstrap_at) == NGX_ERROR) {
                 ngx_log_error(NGX_LOG_WARN, cycle->log, 0,
-                              "cache_tag: watch setup failed for zone \"%V\", "
+                              "cache_tag: bootstrap scan failed for zone \"%V\", "
                               "continuing without directory pre-scan",
                               &zone[i].zone_name);
             }
+
+            ngx_destroy_pool(pool);
 
             state.last_bootstrap_at = ngx_time();
             if (ngx_http_cache_index_store_set_zone_state(writer, &zone[i].zone_name,
