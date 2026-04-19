@@ -12,7 +12,7 @@ static ngx_int_t ngx_http_cache_index_parse_file(ngx_pool_t *pool,
         ngx_str_t *path, ngx_array_t *headers, ngx_array_t **tags,
         ngx_str_t *cache_key_text, time_t *mtime, off_t *size, ngx_log_t *log);
 static ngx_int_t ngx_http_cache_index_store_init_zone(ngx_shm_zone_t *shm_zone,
-    void *data);
+        void *data);
 static ngx_http_cache_index_store_t *ngx_http_cache_index_store_shm_open(
     ngx_http_cache_pilot_main_conf_t *pmcf, ngx_flag_t readonly,
     ngx_log_t *log);
@@ -89,24 +89,24 @@ static ngx_http_cache_index_store_ops_t ngx_http_cache_index_store_shm_ops = {
 
 ngx_int_t
 ngx_http_cache_index_store_init_conf(ngx_conf_t *cf,
-                     ngx_http_cache_pilot_main_conf_t *pmcf) {
+                                     ngx_http_cache_pilot_main_conf_t *pmcf) {
     ngx_http_cache_index_store_ctx_t  *ctx;
     ngx_str_t                          zone_name = ngx_string("cache_pilot_index");
 
     if (pmcf == NULL || pmcf->backend != NGX_HTTP_CACHE_TAG_BACKEND_SHM) {
-    return NGX_OK;
+        return NGX_OK;
     }
 
     ctx = ngx_pcalloc(cf->pool, sizeof(ngx_http_cache_index_store_ctx_t));
     if (ctx == NULL) {
-    return NGX_ERROR;
+        return NGX_ERROR;
     }
 
     pmcf->index_zone = ngx_shared_memory_add(cf, &zone_name,
-               pmcf->index_shm_size,
-               &ngx_http_cache_pilot_module);
+                       pmcf->index_shm_size,
+                       &ngx_http_cache_pilot_module);
     if (pmcf->index_zone == NULL) {
-    return NGX_ERROR;
+        return NGX_ERROR;
     }
 
     pmcf->index_zone->init = ngx_http_cache_index_store_init_zone;
@@ -118,8 +118,8 @@ ngx_http_cache_index_store_init_conf(ngx_conf_t *cf,
 ngx_flag_t
 ngx_http_cache_index_store_configured(ngx_http_cache_pilot_main_conf_t *pmcf) {
     return pmcf != NULL
-       && pmcf->backend == NGX_HTTP_CACHE_TAG_BACKEND_SHM
-       && pmcf->index_zone != NULL;
+           && pmcf->backend == NGX_HTTP_CACHE_TAG_BACKEND_SHM
+           && pmcf->index_zone != NULL;
 }
 
 ngx_http_cache_index_store_t *
@@ -426,7 +426,7 @@ ngx_http_cache_index_store_shm_close(ngx_http_cache_index_store_t *store) {
 
 static ngx_int_t
 ngx_http_cache_index_store_shm_begin_batch(ngx_http_cache_index_store_t *store,
-                                           ngx_log_t *log) {
+        ngx_log_t *log) {
     (void) log;
 
     if (store->u.shm.batch_locked) {
@@ -441,7 +441,7 @@ ngx_http_cache_index_store_shm_begin_batch(ngx_http_cache_index_store_t *store,
 
 static ngx_int_t
 ngx_http_cache_index_store_shm_commit_batch(ngx_http_cache_index_store_t *store,
-                                            ngx_log_t *log) {
+        ngx_log_t *log) {
     (void) log;
 
     if (store->u.shm.batch_locked) {
@@ -454,19 +454,19 @@ ngx_http_cache_index_store_shm_commit_batch(ngx_http_cache_index_store_t *store,
 
 static ngx_int_t
 ngx_http_cache_index_store_shm_rollback_batch(ngx_http_cache_index_store_t *store,
-                                              ngx_log_t *log) {
+        ngx_log_t *log) {
     return ngx_http_cache_index_store_shm_commit_batch(store, log);
 }
 
 static ngx_http_cache_index_shm_zone_t *
 ngx_http_cache_index_store_shm_lookup_zone(ngx_http_cache_index_store_shctx_t *sh,
-                                           ngx_str_t *zone_name) {
+        ngx_str_t *zone_name) {
     ngx_queue_t                     *q;
     ngx_http_cache_index_shm_zone_t *zone;
 
     for (q = ngx_queue_head(&sh->zones);
-         q != ngx_queue_sentinel(&sh->zones);
-         q = ngx_queue_next(q)) {
+            q != ngx_queue_sentinel(&sh->zones);
+            q = ngx_queue_next(q)) {
         zone = ngx_queue_data(q, ngx_http_cache_index_shm_zone_t, queue);
         if (zone->name_len == zone_name->len
                 && ngx_strncmp(zone->name, zone_name->data, zone_name->len) == 0) {
@@ -479,7 +479,7 @@ ngx_http_cache_index_store_shm_lookup_zone(ngx_http_cache_index_store_shctx_t *s
 
 static void *
 ngx_http_cache_index_store_shm_alloc_locked(ngx_http_cache_index_store_ctx_t *ctx,
-                                            size_t size) {
+        size_t size) {
     void *p;
 
     p = ngx_slab_alloc_locked(ctx->shpool, size);
@@ -492,8 +492,8 @@ ngx_http_cache_index_store_shm_alloc_locked(ngx_http_cache_index_store_ctx_t *ct
 
 static ngx_http_cache_index_shm_zone_t *
 ngx_http_cache_index_store_shm_get_zone_locked(ngx_http_cache_index_store_ctx_t *ctx,
-                                               ngx_str_t *zone_name,
-                                               ngx_flag_t create) {
+        ngx_str_t *zone_name,
+        ngx_flag_t create) {
     ngx_http_cache_index_shm_zone_t *zone;
     size_t                           size;
 
@@ -520,13 +520,13 @@ ngx_http_cache_index_store_shm_get_zone_locked(ngx_http_cache_index_store_ctx_t 
 
 static ngx_http_cache_index_shm_file_t *
 ngx_http_cache_index_store_shm_lookup_file(ngx_http_cache_index_shm_zone_t *zone,
-                                           ngx_str_t *path) {
+        ngx_str_t *path) {
     ngx_queue_t                     *q;
     ngx_http_cache_index_shm_file_t *file;
 
     for (q = ngx_queue_head(&zone->files);
-         q != ngx_queue_sentinel(&zone->files);
-         q = ngx_queue_next(q)) {
+            q != ngx_queue_sentinel(&zone->files);
+            q = ngx_queue_next(q)) {
         file = ngx_queue_data(q, ngx_http_cache_index_shm_file_t, queue);
         if (file->path_len == path->len
                 && ngx_strncmp(file->data, path->data, path->len) == 0) {
@@ -539,8 +539,8 @@ ngx_http_cache_index_store_shm_lookup_file(ngx_http_cache_index_shm_zone_t *zone
 
 static ngx_int_t
 ngx_http_cache_index_store_shm_remove_file_locked(ngx_http_cache_index_store_ctx_t *ctx,
-                                                  ngx_http_cache_index_shm_zone_t *zone,
-                                                  ngx_http_cache_index_shm_file_t *file) {
+        ngx_http_cache_index_shm_zone_t *zone,
+        ngx_http_cache_index_shm_file_t *file) {
     (void) zone;
 
     ngx_queue_remove(&file->queue);
@@ -561,7 +561,7 @@ ngx_http_cache_index_store_shm_file_key(ngx_http_cache_index_shm_file_t *file) {
 
 static u_char *
 ngx_http_cache_index_store_shm_file_tag_at(ngx_http_cache_index_shm_file_t *file,
-                                           ngx_uint_t index, size_t *len) {
+        ngx_uint_t index, size_t *len) {
     u_char      *p;
     ngx_uint_t   i;
 
@@ -671,8 +671,8 @@ ngx_http_cache_index_store_shm_upsert_file_meta(ngx_http_cache_index_store_t *st
 
 static ngx_int_t
 ngx_http_cache_index_store_shm_delete_file(ngx_http_cache_index_store_t *store,
-                                           ngx_str_t *zone_name, ngx_str_t *path,
-                                           ngx_log_t *log) {
+        ngx_str_t *zone_name, ngx_str_t *path,
+        ngx_log_t *log) {
     ngx_http_cache_index_store_ctx_t  *ctx;
     ngx_http_cache_index_shm_zone_t   *zone;
     ngx_http_cache_index_shm_file_t   *file;
@@ -704,8 +704,8 @@ ngx_http_cache_index_store_shm_delete_file(ngx_http_cache_index_store_t *store,
 
 static ngx_int_t
 ngx_http_cache_index_store_shm_push_path_unique(ngx_pool_t *pool,
-                                                ngx_array_t *paths, u_char *data,
-                                                size_t len) {
+        ngx_array_t *paths, u_char *data,
+        size_t len) {
     ngx_str_t   *path;
     ngx_uint_t   i;
 
@@ -735,7 +735,7 @@ ngx_http_cache_index_store_shm_push_path_unique(ngx_pool_t *pool,
 
 static ngx_uint_t
 ngx_http_cache_index_store_shm_file_matches_tags(ngx_http_cache_index_shm_file_t *file,
-                                                 ngx_array_t *tags) {
+        ngx_array_t *tags) {
     ngx_str_t    *tag;
     ngx_uint_t    i, j;
     size_t        len;
@@ -786,8 +786,8 @@ ngx_http_cache_index_store_shm_collect_paths_by_tags(ngx_http_cache_index_store_
     zone = ngx_http_cache_index_store_shm_lookup_zone(ctx->sh, zone_name);
     if (zone != NULL) {
         for (q = ngx_queue_head(&zone->files);
-             q != ngx_queue_sentinel(&zone->files);
-             q = ngx_queue_next(q)) {
+                q != ngx_queue_sentinel(&zone->files);
+                q = ngx_queue_next(q)) {
             file = ngx_queue_data(q, ngx_http_cache_index_shm_file_t, queue);
             if (!ngx_http_cache_index_store_shm_file_matches_tags(file, tags)) {
                 continue;
@@ -808,9 +808,9 @@ ngx_http_cache_index_store_shm_collect_paths_by_tags(ngx_http_cache_index_store_
 
 static ngx_int_t
 ngx_http_cache_index_store_shm_collect_paths_by_exact_key(
-        ngx_http_cache_index_store_t *store, ngx_pool_t *pool,
-        ngx_str_t *zone_name, ngx_str_t *key_text, ngx_array_t **paths,
-        ngx_log_t *log) {
+    ngx_http_cache_index_store_t *store, ngx_pool_t *pool,
+    ngx_str_t *zone_name, ngx_str_t *key_text, ngx_array_t **paths,
+    ngx_log_t *log) {
     ngx_http_cache_index_store_ctx_t  *ctx;
     ngx_http_cache_index_shm_zone_t   *zone;
     ngx_http_cache_index_shm_file_t   *file;
@@ -831,8 +831,8 @@ ngx_http_cache_index_store_shm_collect_paths_by_exact_key(
     zone = ngx_http_cache_index_store_shm_lookup_zone(ctx->sh, zone_name);
     if (zone != NULL) {
         for (q = ngx_queue_head(&zone->files);
-             q != ngx_queue_sentinel(&zone->files);
-             q = ngx_queue_next(q)) {
+                q != ngx_queue_sentinel(&zone->files);
+                q = ngx_queue_next(q)) {
             file = ngx_queue_data(q, ngx_http_cache_index_shm_file_t, queue);
             if (file->key_len != key_text->len
                     || ngx_strncmp(ngx_http_cache_index_store_shm_file_key(file),
@@ -855,9 +855,9 @@ ngx_http_cache_index_store_shm_collect_paths_by_exact_key(
 
 static ngx_int_t
 ngx_http_cache_index_store_shm_collect_paths_by_key_prefix(
-        ngx_http_cache_index_store_t *store, ngx_pool_t *pool,
-        ngx_str_t *zone_name, ngx_str_t *prefix, ngx_array_t **paths,
-        ngx_log_t *log) {
+    ngx_http_cache_index_store_t *store, ngx_pool_t *pool,
+    ngx_str_t *zone_name, ngx_str_t *prefix, ngx_array_t **paths,
+    ngx_log_t *log) {
     ngx_http_cache_index_store_ctx_t  *ctx;
     ngx_http_cache_index_shm_zone_t   *zone;
     ngx_http_cache_index_shm_file_t   *file;
@@ -878,8 +878,8 @@ ngx_http_cache_index_store_shm_collect_paths_by_key_prefix(
     zone = ngx_http_cache_index_store_shm_lookup_zone(ctx->sh, zone_name);
     if (zone != NULL) {
         for (q = ngx_queue_head(&zone->files);
-             q != ngx_queue_sentinel(&zone->files);
-             q = ngx_queue_next(q)) {
+                q != ngx_queue_sentinel(&zone->files);
+                q = ngx_queue_next(q)) {
             file = ngx_queue_data(q, ngx_http_cache_index_shm_file_t, queue);
             if (file->key_len < prefix->len
                     || ngx_strncmp(ngx_http_cache_index_store_shm_file_key(file),
