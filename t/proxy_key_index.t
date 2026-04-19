@@ -12,7 +12,7 @@ BEGIN {
 
 repeat_each(1);
 
-plan tests => repeat_each() * (blocks() * 4);
+plan tests => repeat_each() * 96;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_key_cache_test keys_zone=key_cache_test:10m;
@@ -247,14 +247,28 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 === TEST 12: exact purge fans out across vary variants via key index
 --- http_config eval: $::http_config
 --- config eval: $::config
---- more_headers
-X-Variant: a
---- request
-PURGE /proxy/vary
---- error_code: 200
---- response_headers
-Content-Type: text/html
---- response_body_like: Successful purge
+--- more_headers eval
+[
+    'X-Variant: a',
+    '',
+]
+--- request eval
+[
+    'PURGE /proxy/vary',
+    'GET /_stats',
+]
+--- error_code eval
+[200, 200]
+--- response_headers eval
+[
+    'Content-Type: text/html',
+    'Content-Type: application/json',
+]
+--- response_body_like eval
+[
+    'Successful purge',
+    '(?s)"key_index":\{[^}]*"exact_fanout":[1-9]',
+]
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -303,7 +317,7 @@ GET /_stats
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: (?s)"key_index":\{[^}]*"exact_fanout":[1-9]
+--- response_body_like: (?s)"key_index":\{[^}]*"exact_fanout":
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -365,12 +379,23 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 === TEST 19: wildcard purge removes prefix entries via key index
 --- http_config eval: $::http_config
 --- config eval: $::config
---- request
-PURGE /proxy/prefix-*
---- error_code: 200
---- response_headers
-Content-Type: text/html
---- response_body_like: Successful purge
+--- request eval
+[
+    'PURGE /proxy/prefix-*',
+    'GET /_stats',
+]
+--- error_code eval
+[200, 200]
+--- response_headers eval
+[
+    'Content-Type: text/html',
+    'Content-Type: application/json',
+]
+--- response_body_like eval
+[
+    'Successful purge',
+    '(?s)"key_index":\{[^}]*"wildcard_hits":[1-9]',
+]
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -415,7 +440,7 @@ GET /_stats
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: (?s)"key_index":\{[^}]*"wildcard_hits":[1-9]
+--- response_body_like: (?s)"key_index":\{[^}]*"wildcard_hits":
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/

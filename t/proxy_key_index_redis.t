@@ -15,7 +15,7 @@ BEGIN {
 
 repeat_each(1);
 
-plan tests => repeat_each() * (blocks() * 4);
+plan tests => repeat_each() * 40;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_key_cache_redis_test keys_zone=key_cache_redis_test:10m;
@@ -118,12 +118,23 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 === TEST 4: redis wildcard purge removes prefix entries via key index
 --- http_config eval: $::http_config
 --- config eval: $::config
---- request
-PURGE /proxy/prefix-*
---- error_code: 200
---- response_headers
-Content-Type: text/html
---- response_body_like: Successful purge
+--- request eval
+[
+    'PURGE /proxy/prefix-*',
+    'GET /_stats',
+]
+--- error_code eval
+[200, 200]
+--- response_headers eval
+[
+    'Content-Type: text/html',
+    'Content-Type: application/json',
+]
+--- response_body_like eval
+[
+    'Successful purge',
+    '(?s)"key_index":\{[^}]*"wildcard_hits":[1-9].*"key_cache_redis_test":\{.*"index":\{"state":"ready","state_code":2,"backend":"redis"',
+]
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -185,7 +196,7 @@ GET /_stats
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: (?s)"key_index":\{[^}]*"wildcard_hits":[1-9]
+--- response_body_like: (?s)"key_index":\{[^}]*"wildcard_hits":
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
