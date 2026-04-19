@@ -23,7 +23,6 @@ typedef struct {
     ngx_uint_t entries_updating;
     ngx_uint_t index_state;
     ngx_uint_t has_index;
-    ngx_uint_t index_backend;      /* NGX_HTTP_CACHE_TAG_BACKEND_* */
     time_t     index_last_updated_at;
 } ngx_http_cache_pilot_zone_snapshot_t;
 
@@ -105,14 +104,12 @@ ngx_http_cache_pilot_snapshot_zone(ngx_http_cache_pilot_stat_zone_t *sz,
 
     snap->index_state    = NGX_CACHE_PILOT_INDEX_STATE_DISABLED;
     snap->has_index      = 0;
-    snap->index_backend  = 0;
     snap->index_last_updated_at = 0;
 
 #if (NGX_LINUX)
     if (ngx_http_cache_index_store_configured(pmcf)) {
         snap->index_state   = NGX_CACHE_PILOT_INDEX_STATE_CONFIGURED;
         snap->has_index     = 1;
-        snap->index_backend = (ngx_uint_t) pmcf->backend;
         snap->index_max_size = (off_t) pmcf->index_shm_size;
 
         reader = ngx_http_cache_index_store_reader(pmcf, ngx_cycle->log);
@@ -206,16 +203,6 @@ ngx_http_cache_pilot_negotiate_format(ngx_http_request_t *r) {
 
 
 /* ── Backend name helper ── */
-
-static const char *
-ngx_http_cache_pilot_backend_str(ngx_uint_t backend) {
-    switch (backend) {
-    case NGX_HTTP_CACHE_TAG_BACKEND_SHM:
-        return "shm";
-    default:
-        return "unknown";
-    }
-}
 
 static const char *
 ngx_http_cache_pilot_index_state_str(ngx_uint_t state) {
@@ -323,7 +310,7 @@ ngx_http_cache_pilot_write_json(u_char *p, u_char *last,
                              s->index_state,
                              s->index_max_size,
                              s->index_last_updated_at,
-                             ngx_http_cache_pilot_backend_str(s->index_backend));
+                             "shm");
         }
 
         if (p < last) {
@@ -518,7 +505,7 @@ ngx_http_cache_pilot_write_prometheus(u_char *p, u_char *last,
                          "nginx_cache_pilot_index_info"
                          "{zone=\"%V\",backend=\"%s\"} 1\n",
                          &s->name,
-                         ngx_http_cache_pilot_backend_str(s->index_backend));
+                         "shm");
     }
 
     return p;

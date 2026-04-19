@@ -16,6 +16,7 @@ This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-module
 - cache-tag indexing currently requires Linux
 - cache-tag and cache-key indexing use an in-memory shared-memory zone configured with `cache_pilot_index_zone_size`
 - index contents are rebuilt from cache files after a cold restart; they do not survive nginx process restarts
+- indexed tag purges require the cache zone to be registered with `cache_pilot_index on` and the shared-memory index for that zone to be ready; the module no longer runs an on-demand bootstrap inside the purge request path
 - `--with-threads` is strongly recommended so startup bootstrap and wildcard purge scans do not block the nginx event loop
 
 ## Installation Instructions
@@ -280,7 +281,7 @@ For dedicated purge locations, configure the cache zone with `*_cache`, the purg
 
 Set the response type returned after a purge.
 
-When `json` is selected, successful purges may also include `cache_pilot.purge_path` to describe the request path that completed the purge, for example `filesystem-fallback`, `key-prefix-index`, `reused-persisted-index`, `bootstrapped-on-demand`, or `exact-key-fanout`. Here, `reused-persisted-index` means the request reused shared-memory index state that was already built for the current nginx lifetime; it does not imply on-disk persistence. JSON responses also include `cache_pilot.purged`, using the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts to report how many cache entries that purge request removed or expired. Text responses keep existing plain body format.
+When `json` is selected, successful purges may also include `cache_pilot.purge_path` to describe the request path that completed the purge, for example `filesystem-fallback`, `key-prefix-index`, `reused-persisted-index`, or `exact-key-fanout`. Here, `reused-persisted-index` means the request reused shared-memory index state that was already built for the current nginx lifetime; it does not imply on-disk persistence. JSON responses also include `cache_pilot.purged`, using the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts to report how many cache entries that purge request removed or expired. Text responses keep existing plain body format.
 
 #### `cache_pilot_purge_mode_header`
 
@@ -542,8 +543,8 @@ Notes:
 
 - Cache-tag support currently requires Linux.
 - The tag index lives in a shared-memory zone sized by `cache_pilot_index_zone_size`.
-- After a cold restart the index is rebuilt from cache files on startup or on the first indexed purge.
-- The cache watcher keeps the index fresh during normal operation.
+- After a cold restart the index is rebuilt from cache files during startup. Indexed tag purges decline until that rebuild has completed for the target zone.
+- The cache watcher keeps the index fresh during normal operation and applies queued inotify updates on a 250 ms coalescing timer.
 - When built with `--with-threads`, the startup cache-tree bootstrap and wildcard purge scans run in an nginx thread pool, keeping the event loop unblocked. Without threads, both operations run synchronously.
 
 ## Known issues
@@ -572,15 +573,17 @@ The index is built and kept current through two mechanisms that work together:
 
 **inotify watcher (Linux only).** When `cache_pilot_index on` is set, one worker process (the owner) opens an `inotify` watch on the cache directory tree. The watcher updates the shared-memory tag index and cache-key metadata as cache files are created, replaced, or removed.
 
-**Cold-start bootstrap.** If a tag `PURGE` request arrives before a zone has been indexed — for example after a restart — the module scans the entire cache directory tree, reads the cached response headers from every file it finds, extracts tags, and rebuilds the shared-memory index before completing the purge. The result is recorded so subsequent requests skip the scan.
+The watcher coalesces pending inotify operations on a 250 ms timer before applying them to the shared-memory index. That keeps write amplification down, but it also means purge visibility for just-written cache files can lag by up to roughly one timer tick.
 
-**Tag extraction.** Both paths use the same extraction logic. The module reads the configured header names (`Surrogate-Key` and `Cache-Tag` by default) from the binary nginx cache file header and splits the value on commas and whitespace. Duplicate tags within a single response are deduplicated. The hard limit is 1000 tags per cached file.
+**Cold-start bootstrap.** After a restart, the module scans the cache directory tree, reads the cached response headers from every file it finds, extracts tags, and rebuilds the shared-memory index before indexed tag purges for that zone are considered ready. Requests do not trigger this bootstrap on demand anymore.
+
+**Tag extraction.** Both paths use the same extraction logic. The module reads the configured header names (`Surrogate-Key` and `Cache-Tag` by default) from the binary nginx cache file header and splits the value on commas and ASCII whitespace. Duplicate tags within a single response are deduplicated. The hard limit is 1000 extracted tag tokens per scan.
 
 ### Shared-memory index
 
 The module stores tag associations, exact-key associations, per-file cache-key metadata, and per-zone bootstrap state inside an nginx shared-memory zone created by `cache_pilot_index_zone_size`.
 
-**Read path.** Tag purges look up matching cache paths from the in-memory tag index. Exact-key fanout looks up sibling paths from the in-memory exact-key index. Wildcard key-prefix purges read in-memory per-file key metadata before deciding whether a filesystem walk is needed.
+**Read path.** Tag purges look up matching cache paths from the in-memory tag index, but only after the zone has reached the ready state. Exact-key fanout looks up sibling paths from the in-memory exact-key index. Wildcard key-prefix purges read in-memory per-file key metadata before deciding whether a filesystem walk is needed.
 
 **Write path.** The owner worker updates the in-memory zone as cache files are created, replaced, or removed. Hard purges delete the cache file and remove the corresponding in-memory entry in the same request path.
 
@@ -591,8 +594,9 @@ The module stores tag associations, exact-key associations, per-file cache-key m
 When a tag `PURGE` request is received:
 
 1. Tags are extracted from the request headers using the same tokenisation logic as indexing.
-2. The index is queried for all file paths associated with the supplied tags (OR semantics — any matching tag is sufficient).
-3. For each path the module applies the configured purge mode:
+2. If the zone is not registered for indexing or its shared-memory index is not yet ready, the purge declines instead of running a synchronous cache-tree bootstrap inside the request.
+3. Otherwise, the index is queried for all file paths associated with the supplied tags (OR semantics — any matching tag is sufficient).
+4. For each path the module applies the configured purge mode:
     - **Soft purge** — the cache file is marked expired in the shared-memory cache node so the next request is served as `EXPIRED`.
     - **Hard purge** — the cache file is deleted from disk immediately and the corresponding in-memory index entry is removed in the same purge path.
 

@@ -26,6 +26,14 @@ typedef struct {
     ngx_flag_t                    purge_all;
 } ngx_http_cache_pilot_conf_t;
 
+typedef enum {
+    NGX_HTTP_CACHE_PILOT_PROTOCOL_UNSET = 0,
+    NGX_HTTP_CACHE_PILOT_PROTOCOL_FASTCGI,
+    NGX_HTTP_CACHE_PILOT_PROTOCOL_PROXY,
+    NGX_HTTP_CACHE_PILOT_PROTOCOL_SCGI,
+    NGX_HTTP_CACHE_PILOT_PROTOCOL_UWSGI
+} ngx_http_cache_pilot_protocol_e;
+
 typedef struct {
 #if (NGX_HTTP_FASTCGI)
     ngx_http_cache_pilot_conf_t   fastcgi;
@@ -43,6 +51,7 @@ typedef struct {
     ngx_http_cache_pilot_conf_t  *conf;
     ngx_http_handler_pt           handler;
     ngx_http_handler_pt           original_handler;
+    ngx_uint_t                    protocol;
 
     ngx_uint_t                    resptype;
     ngx_flag_t                    cache_index;
@@ -69,11 +78,6 @@ typedef enum {
     NGX_HTTP_CACHE_PILOT_PURGE_STATS_ALL
 } ngx_http_cache_pilot_purge_stats_e;
 
-typedef enum {
-    NGX_HTTP_CACHE_TAG_BACKEND_NONE = 0,
-    NGX_HTTP_CACHE_TAG_BACKEND_SHM
-} ngx_http_cache_index_backend_e;
-
 /*
  * Forward declaration for ngx_http_cache_pilot_metrics_shctx_t.
  * Full definition is in ngx_cache_pilot_metrics.h.
@@ -92,7 +96,6 @@ typedef struct {
 } ngx_http_cache_pilot_stat_zone_t;
 
 typedef struct {
-    ngx_http_cache_index_backend_e           backend;
     size_t                                 index_shm_size;
     ngx_shm_zone_t                        *index_zone;
     ngx_array_t                           *zones;
@@ -139,7 +142,7 @@ typedef struct {
 } ngx_http_cache_index_pending_op_t;
 #define NGX_HTTP_CACHE_INDEX_SHM_SIZE           (32 * 1024 * 1024)
 
-#define NGX_HTTP_CACHE_TAG_MAX_TAGS_PER_FILE    1000
+#define NGX_HTTP_CACHE_TAG_MAX_TOKENS_PER_SCAN  1000
 
 typedef struct {
     ngx_uint_t                    initialized;
@@ -208,12 +211,6 @@ ngx_http_cache_index_store_t *ngx_http_cache_index_store_open_writer(
 ngx_http_cache_index_store_t *ngx_http_cache_index_store_open_reader(
     ngx_http_cache_pilot_main_conf_t *pmcf, ngx_log_t *log);
 void ngx_http_cache_index_store_close(ngx_http_cache_index_store_t *store);
-ngx_int_t ngx_http_cache_index_store_begin_batch(
-    ngx_http_cache_index_store_t *store, ngx_log_t *log);
-ngx_int_t ngx_http_cache_index_store_commit_batch(
-    ngx_http_cache_index_store_t *store, ngx_log_t *log);
-ngx_int_t ngx_http_cache_index_store_rollback_batch(
-    ngx_http_cache_index_store_t *store, ngx_log_t *log);
 ngx_int_t ngx_http_cache_index_store_upsert_file_meta(
     ngx_http_cache_index_store_t *store, ngx_str_t *zone_name, ngx_str_t *path,
     ngx_str_t *cache_key_text, time_t mtime, off_t size, ngx_array_t *tags,
