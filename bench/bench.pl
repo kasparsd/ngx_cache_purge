@@ -379,6 +379,8 @@ sub run_scenario {
     warm_cache($scenario->{prefix}, $options{count}, $scenario);
 
     if (($scenario->{index_tracking_mode} || '') eq 'wildcard_prefix') {
+        # Wildcard index metadata is written asynchronously; give it a brief
+        # settle window before running wildcard preflight probes.
         sleep(1.0);
     }
 
