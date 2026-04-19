@@ -49,6 +49,9 @@ static ngx_int_t ngx_http_cache_index_store_shm_get_zone_state(
 static ngx_int_t ngx_http_cache_index_store_shm_set_zone_state(
     ngx_http_cache_index_store_t *store, ngx_str_t *zone_name,
     ngx_http_cache_index_zone_state_t *state, ngx_log_t *log);
+static void ngx_http_cache_index_store_shm_path_insert(
+    ngx_rbtree_node_t *temp, ngx_rbtree_node_t *node,
+    ngx_rbtree_node_t *sentinel);
 static ngx_http_cache_index_shm_zone_t *ngx_http_cache_index_store_shm_lookup_zone(
     ngx_http_cache_index_store_shctx_t *sh, ngx_str_t *zone_name);
 static ngx_http_cache_index_shm_zone_t *ngx_http_cache_index_store_shm_get_zone_locked(
@@ -74,6 +77,8 @@ static u_char *ngx_http_cache_index_store_shm_file_tag_at(
     size_t *len);
 static void ngx_http_cache_index_store_shm_touch_zone_locked(
     ngx_http_cache_index_shm_zone_t *zone);
+static ngx_int_t ngx_http_cache_index_store_shm_path_cmp(
+    ngx_str_t *path, ngx_http_cache_index_shm_file_t *file);
 
 static ngx_http_cache_index_store_ops_t ngx_http_cache_index_store_shm_ops = {
     ngx_http_cache_index_store_shm_close,
@@ -460,6 +465,66 @@ ngx_http_cache_index_store_shm_rollback_batch(ngx_http_cache_index_store_t *stor
     return ngx_http_cache_index_store_shm_commit_batch(store, log);
 }
 
+static void
+ngx_http_cache_index_store_shm_path_insert(ngx_rbtree_node_t *temp,
+        ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel) {
+    ngx_http_cache_index_shm_file_t  *current, *file;
+    ngx_str_t                         path;
+    ngx_int_t                         rc;
+
+    file = ngx_rbtree_data(node, ngx_http_cache_index_shm_file_t, path_node);
+    path.len = file->path_len;
+    path.data = ngx_http_cache_index_store_shm_file_path(file);
+
+    for (;;) {
+        if (node->key < temp->key) {
+            if (temp->left == sentinel) {
+                temp->left = node;
+                break;
+            }
+
+            temp = temp->left;
+            continue;
+        }
+
+        if (node->key > temp->key) {
+            if (temp->right == sentinel) {
+                temp->right = node;
+                break;
+            }
+
+            temp = temp->right;
+            continue;
+        }
+
+        current = ngx_rbtree_data(temp, ngx_http_cache_index_shm_file_t,
+                                  path_node);
+        rc = ngx_http_cache_index_store_shm_path_cmp(&path, current);
+
+        if (rc < 0) {
+            if (temp->left == sentinel) {
+                temp->left = node;
+                break;
+            }
+
+            temp = temp->left;
+            continue;
+        }
+
+        if (temp->right == sentinel) {
+            temp->right = node;
+            break;
+        }
+
+        temp = temp->right;
+    }
+
+    node->parent = temp;
+    node->left = sentinel;
+    node->right = sentinel;
+    ngx_rbt_red(node);
+}
+
 static ngx_http_cache_index_shm_zone_t *
 ngx_http_cache_index_store_shm_lookup_zone(ngx_http_cache_index_store_shctx_t *sh,
         ngx_str_t *zone_name) {
@@ -515,6 +580,8 @@ ngx_http_cache_index_store_shm_get_zone_locked(ngx_http_cache_index_store_ctx_t 
     ngx_memcpy(zone->name, zone_name->data, zone_name->len);
     zone->name[zone_name->len] = '\0';
     ngx_queue_init(&zone->files);
+    ngx_rbtree_init(&zone->path_index, &zone->path_sentinel,
+                    ngx_http_cache_index_store_shm_path_insert);
     ngx_queue_insert_tail(&ctx->sh->zones, &zone->queue);
 
     return zone;
@@ -523,17 +590,34 @@ ngx_http_cache_index_store_shm_get_zone_locked(ngx_http_cache_index_store_ctx_t 
 static ngx_http_cache_index_shm_file_t *
 ngx_http_cache_index_store_shm_lookup_file(ngx_http_cache_index_shm_zone_t *zone,
         ngx_str_t *path) {
-    ngx_queue_t                     *q;
+    ngx_rbtree_node_t              *node, *sentinel;
     ngx_http_cache_index_shm_file_t *file;
+    uint32_t                        hash;
+    ngx_int_t                       rc;
 
-    for (q = ngx_queue_head(&zone->files);
-            q != ngx_queue_sentinel(&zone->files);
-            q = ngx_queue_next(q)) {
-        file = ngx_queue_data(q, ngx_http_cache_index_shm_file_t, queue);
-        if (file->path_len == path->len
-                && ngx_strncmp(file->data, path->data, path->len) == 0) {
+    hash = ngx_crc32_short(path->data, path->len);
+    node = zone->path_index.root;
+    sentinel = zone->path_index.sentinel;
+
+    while (node != sentinel) {
+        if (hash < node->key) {
+            node = node->left;
+            continue;
+        }
+
+        if (hash > node->key) {
+            node = node->right;
+            continue;
+        }
+
+        file = ngx_rbtree_data(node, ngx_http_cache_index_shm_file_t,
+                               path_node);
+        rc = ngx_http_cache_index_store_shm_path_cmp(path, file);
+        if (rc == 0) {
             return file;
         }
+
+        node = rc < 0 ? node->left : node->right;
     }
 
     return NULL;
@@ -543,8 +627,7 @@ static ngx_int_t
 ngx_http_cache_index_store_shm_remove_file_locked(ngx_http_cache_index_store_ctx_t *ctx,
         ngx_http_cache_index_shm_zone_t *zone,
         ngx_http_cache_index_shm_file_t *file) {
-    (void) zone;
-
+    ngx_rbtree_delete(&zone->path_index, &file->path_node);
     ngx_queue_remove(&file->queue);
     ngx_slab_free_locked(ctx->shpool, file);
 
@@ -585,6 +668,14 @@ static void
 ngx_http_cache_index_store_shm_touch_zone_locked(
     ngx_http_cache_index_shm_zone_t *zone) {
     zone->last_updated_at = ngx_time();
+}
+
+static ngx_int_t
+ngx_http_cache_index_store_shm_path_cmp(ngx_str_t *path,
+        ngx_http_cache_index_shm_file_t *file) {
+    return ngx_memn2cmp(path->data,
+                        ngx_http_cache_index_store_shm_file_path(file),
+                        path->len, file->path_len);
 }
 
 static ngx_int_t
@@ -649,6 +740,7 @@ ngx_http_cache_index_store_shm_upsert_file_meta(ngx_http_cache_index_store_t *st
     file->path_len = path->len;
     file->key_len = cache_key_text->len;
     file->tag_count = tags != NULL ? tags->nelts : 0;
+    file->path_node.key = ngx_crc32_short(path->data, path->len);
 
     p = file->data;
     p = ngx_cpymem(p, path->data, path->len);
@@ -668,6 +760,7 @@ ngx_http_cache_index_store_shm_upsert_file_meta(ngx_http_cache_index_store_t *st
         (void) copied;
     }
 
+    ngx_rbtree_insert(&zone->path_index, &file->path_node);
     ngx_queue_insert_tail(&zone->files, &file->queue);
     ngx_http_cache_index_store_shm_touch_zone_locked(zone);
 

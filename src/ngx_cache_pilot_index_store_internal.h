@@ -27,6 +27,8 @@ struct ngx_http_cache_index_store_ctx_s {
 struct ngx_http_cache_index_shm_zone_s {
     ngx_queue_t                    queue;
     ngx_queue_t                    files;
+    ngx_rbtree_t                   path_index;
+    ngx_rbtree_node_t              path_sentinel;
     ngx_flag_t                     bootstrap_complete;
     time_t                         last_bootstrap_at;
     time_t                         last_updated_at;
@@ -36,6 +38,7 @@ struct ngx_http_cache_index_shm_zone_s {
 
 struct ngx_http_cache_index_shm_file_s {
     ngx_queue_t                    queue;
+    ngx_rbtree_node_t              path_node;
     time_t                         mtime;
     off_t                          size;
     ngx_uint_t                     tag_count;

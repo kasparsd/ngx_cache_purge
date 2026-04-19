@@ -151,29 +151,20 @@ ngx_http_cache_index_scan_zone(ngx_http_cache_index_store_t *store,
     ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
                   "cache_tag bootstrap zone \"%V\"", &zone->zone_name);
 
-    if (ngx_http_cache_index_store_begin_batch(store, cycle->log) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
     pool = ngx_create_pool(4096, cycle->log);
     if (pool == NULL) {
-        ngx_http_cache_index_store_rollback_batch(store, cycle->log);
         return NGX_ERROR;
     }
 
+    /* Parse files outside the SHM critical section; each store mutation
+     * takes the lock only for the short commit window it needs. */
     if (ngx_http_cache_index_scan_recursive(store, zone, pool,
                                             &zone->cache->path->name, cycle, 0) != NGX_OK) {
         ngx_destroy_pool(pool);
-        ngx_http_cache_index_store_rollback_batch(store, cycle->log);
         return NGX_ERROR;
     }
 
     ngx_destroy_pool(pool);
-
-    if (ngx_http_cache_index_store_commit_batch(store, cycle->log) != NGX_OK) {
-        ngx_http_cache_index_store_rollback_batch(store, cycle->log);
-        return NGX_ERROR;
-    }
 
     return NGX_OK;
 }
@@ -1244,10 +1235,6 @@ ngx_http_cache_index_apply_pending_ops(ngx_http_cache_index_store_t *store,
         return NGX_OK;
     }
 
-    if (ngx_http_cache_index_store_begin_batch(store, log) != NGX_OK) {
-        return NGX_ERROR;
-    }
-
     op = pending_ops->elts;
     for (i = 0; i < pending_ops->nelts; i++) {
         if (op[i].operation == NGX_HTTP_CACHE_TAG_OP_DELETE) {
@@ -1257,7 +1244,6 @@ ngx_http_cache_index_apply_pending_ops(ngx_http_cache_index_store_t *store,
 
             if (ngx_http_cache_index_store_delete_file(store, &op[i].zone_name,
                     &op[i].path, log) != NGX_OK) {
-                ngx_http_cache_index_store_rollback_batch(store, log);
                 return NGX_ERROR;
             }
             continue;
@@ -1269,7 +1255,6 @@ ngx_http_cache_index_apply_pending_ops(ngx_http_cache_index_store_t *store,
 
         zone = ngx_http_cache_index_lookup_zone(op[i].cache);
         if (zone == NULL || zone->headers == NULL) {
-            ngx_http_cache_index_store_rollback_batch(store, log);
             ngx_log_error(NGX_LOG_ERR, log, 0,
                           "cache_tag missing header configuration for zone \"%V\"",
                           &op[i].zone_name);
@@ -1278,14 +1263,8 @@ ngx_http_cache_index_apply_pending_ops(ngx_http_cache_index_store_t *store,
 
         if (ngx_http_cache_index_store_process_file(store, &op[i].zone_name,
                 &op[i].path, zone->headers, log) != NGX_OK) {
-            ngx_http_cache_index_store_rollback_batch(store, log);
             return NGX_ERROR;
         }
-    }
-
-    if (ngx_http_cache_index_store_commit_batch(store, log) != NGX_OK) {
-        ngx_http_cache_index_store_rollback_batch(store, log);
-        return NGX_ERROR;
     }
 
     return NGX_OK;
