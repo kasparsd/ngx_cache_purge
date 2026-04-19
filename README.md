@@ -379,51 +379,64 @@ location /_cache_stats {
 
 ```json
 {
-  "version": 1,
-    "timestamp": 1776537836,
-  "purges": {
-        "exact": { "hard": 0, "soft": 0 },
-        "wildcard": { "hard": 0, "soft": 0 },
-        "tag": { "hard": 0, "soft": 0 },
-        "all": { "hard": 0, "soft": 0 }
+    "version": 1,
+    "timestamp": 1776605478,
+    "purges": {
+        "exact": {
+            "hard": 0,
+            "soft": 0
+        },
+        "wildcard": {
+            "hard": 0,
+            "soft": 0
+        },
+        "tag": {
+            "hard": 0,
+            "soft": 6
+        },
+        "all": {
+            "hard": 0,
+            "soft": 0
+        }
     },
     "key_index": {
         "exact_fanout": 0,
         "wildcard_hits": 0
-  },
-  "zones": {
-        "demo_soft": {
-            "size": 0,
+    },
+    "zones": {
+        "zone-one": {
+            "size": 35184,
             "max_size": 2251799813685247,
-            "cold": true,
-      "entries": {
-                "total": 0,
+            "cold": false,
+            "entries": {
+                "total": 4815,
                 "valid": 0,
-                "expired": 0,
-        "updating": 0
-      },
-      "index": {
-                "state": "configured",
-                "state_code": 1,
+                "expired": 4815,
+                "updating": 0
+            },
+            "index": {
+                "state": "ready",
+                "state_code": 2,
                 "backend": "shm"
-      }
+            }
         }
-  }
+    }
 }
 ```
 
 Additional zones are omitted for brevity.
 
-`index` is omitted when no `cache_pilot_index_zone_size` is configured. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `purges` counters are global across all zones and survive `nginx -s reload`.
+`zones.<zone>.max_size` reports the configured NGINX cache zone limit. When the in-memory index is enabled, `index.max_size` reports the configured `cache_pilot_index_zone_size` shared-memory limit for the index. `index` is omitted when the in-memory index is unavailable. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `purges` counters are global across all zones and survive `nginx -s reload`.
 
 **Prometheus metrics** (prefix `nginx_cache_pilot_`):
 
 - `nginx_cache_pilot_purges_total{type,mode}` — counter, purge operations by type (`exact`, `wildcard`, `tag`, `all`) and mode (`hard`, `soft`)
 - `nginx_cache_pilot_key_index_total{type}` — counter, key-index assisted purge operations by type (`exact_fanout`, `wildcard_hits`)
 - `nginx_cache_pilot_zone_size_bytes{zone}` — gauge, current zone usage in bytes
-- `nginx_cache_pilot_zone_max_size_bytes{zone}` — gauge, configured maximum zone size
+- `nginx_cache_pilot_zone_max_size_bytes{zone}` — gauge, configured maximum NGINX cache zone size
 - `nginx_cache_pilot_zone_cold{zone}` — gauge, 1 while the cache loader is still warming the zone
 - `nginx_cache_pilot_zone_entries{zone,state}` — gauge, entry count by state (`valid`, `expired`, `updating`)
+- `nginx_cache_pilot_index_max_size_bytes{zone}` — gauge, configured maximum shared-memory cache index size
 - `nginx_cache_pilot_index_state{zone,state}` — gauge, per-zone key index readiness (`0=disabled`, `1=configured`, `2=ready`)
 - `nginx_cache_pilot_index_info{zone,backend}` — info gauge, tag index backend type
 

@@ -73,7 +73,7 @@ sub set_default_http_config {
     my (%args) = @_;
     my $default_http_config = $args{http_config};
 
-    set_http_config_filter(sub {
+    Test::Nginx::Socket::set_http_config_filter(sub {
         my $http_config = shift;
 
         $http_config = '' if !defined $http_config;

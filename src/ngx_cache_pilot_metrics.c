@@ -16,6 +16,7 @@ typedef struct {
     ngx_str_t  name;
     off_t      size;
     off_t      max_size;
+    off_t      index_max_size;
     ngx_uint_t cold;             /* 1 while nginx cache loader is running */
     ngx_uint_t entries_valid;
     ngx_uint_t entries_expired;
@@ -79,6 +80,7 @@ ngx_http_cache_pilot_snapshot_zone(ngx_http_cache_pilot_stat_zone_t *sz,
     cache = sz->cache;
     snap->name     = sz->name;
     snap->max_size = cache->max_size;
+    snap->index_max_size = 0;
 
     /* Snapshot size + rbtree under the shpool mutex */
     ngx_shmtx_lock(&cache->shpool->mutex);
@@ -108,6 +110,7 @@ ngx_http_cache_pilot_snapshot_zone(ngx_http_cache_pilot_stat_zone_t *sz,
         snap->index_state   = NGX_CACHE_PILOT_INDEX_STATE_CONFIGURED;
         snap->has_index     = 1;
         snap->index_backend = (ngx_uint_t) pmcf->backend;
+        snap->index_max_size = (off_t) pmcf->index_shm_size;
 
         reader = ngx_http_cache_index_store_reader(pmcf, ngx_cycle->log);
         if (reader == NULL && ngx_http_cache_index_is_owner()) {
@@ -285,10 +288,12 @@ ngx_http_cache_pilot_write_json(u_char *p, u_char *last,
                              ",\"index\":{"
                              "\"state\":\"%s\","
                              "\"state_code\":%ui,"
+                             "\"max_size\":%O,"
                              "\"backend\":\"%s\""
                              "}",
                              ngx_http_cache_pilot_index_state_str(s->index_state),
                              s->index_state,
+                             s->index_max_size,
                              ngx_http_cache_pilot_backend_str(s->index_backend));
         }
 
@@ -356,7 +361,7 @@ ngx_http_cache_pilot_write_prometheus(u_char *p, u_char *last,
                          &s->name, s->size);
     }
 
-    /* Zone max_size */
+    /* Cache zone max_size */
     p = ngx_slprintf(p, last,
                      "# HELP nginx_cache_pilot_zone_max_size_bytes"
                      " Configured maximum cache zone size in bytes\n"
@@ -366,6 +371,25 @@ ngx_http_cache_pilot_write_prometheus(u_char *p, u_char *last,
         p = ngx_slprintf(p, last,
                          "nginx_cache_pilot_zone_max_size_bytes{zone=\"%V\"} %O\n",
                          &s->name, s->max_size);
+    }
+
+    /* Cache index max_size */
+    for (i = 0; i < nzones; i++) {
+        s = &snaps[i];
+        if (!s->has_index) {
+            continue;
+        }
+
+        if (i == 0 || !snaps[i - 1].has_index) {
+            p = ngx_slprintf(p, last,
+                             "# HELP nginx_cache_pilot_index_max_size_bytes"
+                             " Configured maximum shared-memory cache index size in bytes\n"
+                             "# TYPE nginx_cache_pilot_index_max_size_bytes gauge\n");
+        }
+
+        p = ngx_slprintf(p, last,
+                         "nginx_cache_pilot_index_max_size_bytes{zone=\"%V\"} %O\n",
+                         &s->name, s->index_max_size);
     }
 
     /* Zone cold */
