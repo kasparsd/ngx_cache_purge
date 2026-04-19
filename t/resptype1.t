@@ -113,7 +113,7 @@ PURGE /purge/proxy/passwd
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: ^\{\"key\": \"\/proxy\/passwd\"\}$
+--- response_body_like: ^\{\"key\": \"\/proxy\/passwd\", \"cache_pilot\": \{\"purged\": \{\"by_key\": 1, \"by_tag\": 0\}\}\}$
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -194,7 +194,7 @@ PURGE /proxy_wild_json/pass*
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: \{\"key\": \"\/proxy_wild_json\/pass\*\", \"cache_pilot\": \{\"purge_path\": \"filesystem-fallback\"\}\}
+--- response_body_like: \{\"key\": \"\/proxy_wild_json\/pass\*\", \"cache_pilot\": \{\"purge_path\": \"filesystem-fallback\", \"purged\": \{\"by_key\": 2, \"by_tag\": 0\}\}\}
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -240,7 +240,7 @@ PURGE /purge_json/proxy/passwd?t=7
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: ^\{\"key\": \"\/proxy\/passwd\?t=7\"\}$
+--- response_body_like: ^\{\"key\": \"\/proxy\/passwd\?t=7\", \"cache_pilot\": \{\"purged\": \{\"by_key\": 1, \"by_tag\": 0\}\}\}$
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/

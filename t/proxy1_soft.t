@@ -75,6 +75,7 @@ our $config = <<'_EOC_';
 _EOC_
 
 worker_connections(128);
+timeout(10);
 no_shuffle();
 run_tests();
 
@@ -92,7 +93,6 @@ GET /proxy/passwd?t=proxy-soft-html
 Content-Type: text/plain
 X-Cache-Status: MISS
 --- response_body_like: root
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 5: < 0.8.3 or < 0.7.62
@@ -100,8 +100,6 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 2: separate-location proxy soft purge uses default JSON response
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 PURGE /purge_proxy/proxy/passwd?t=proxy-soft-html
 --- more_headers
@@ -109,8 +107,7 @@ X-Purge-Mode: soft
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: ^\{\"key\": \"\/proxy\/passwd\?t=proxy-soft-html\"\}$
---- timeout: 10
+--- response_body_like: ^\{\"key\": \"\/proxy\/passwd\?t=proxy-soft-html\", \"cache_pilot\": \{\"purged\": \{\"by_key\": 1, \"by_tag\": 0\}\}\}$
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62
@@ -118,8 +115,6 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 3: separate-location proxy soft purge expires entry
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 GET /proxy/passwd?t=proxy-soft-html
 --- error_code: 200
@@ -127,7 +122,6 @@ GET /proxy/passwd?t=proxy-soft-html
 Content-Type: text/plain
 X-Cache-Status: EXPIRED
 --- response_body_like: root
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 5: < 0.8.3 or < 0.7.62
@@ -135,8 +129,6 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 4: prepare JSON soft purge target
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 GET /proxy/passwd?t=proxy-soft-json
 --- error_code: 200
@@ -144,7 +136,6 @@ GET /proxy/passwd?t=proxy-soft-json
 Content-Type: text/plain
 X-Cache-Status: MISS
 --- response_body_like: root
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 5: < 0.8.3 or < 0.7.62
@@ -152,8 +143,6 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 5: soft purge keeps JSON response type
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 PURGE /purge_proxy_json/proxy/passwd?t=proxy-soft-json
 --- more_headers
@@ -161,8 +150,7 @@ X-Purge-Mode: soft
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: ^\{\"key\": \"\/proxy\/passwd\?t=proxy-soft-json\"\}$
---- timeout: 10
+--- response_body_like: ^\{\"key\": \"\/proxy\/passwd\?t=proxy-soft-json\", \"cache_pilot\": \{\"purged\": \{\"by_key\": 1, \"by_tag\": 0\}\}\}$
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62
@@ -170,8 +158,6 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 8: prepare text soft purge target
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 GET /proxy/passwd?t=proxy-soft-text
 --- error_code: 200
@@ -179,7 +165,6 @@ GET /proxy/passwd?t=proxy-soft-text
 Content-Type: text/plain
 X-Cache-Status: MISS
 --- response_body_like: root
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 5: < 0.8.3 or < 0.7.62
@@ -187,8 +172,6 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 9: soft purge keeps text response type
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 PURGE /purge_proxy_text/proxy/passwd?t=proxy-soft-text
 --- more_headers
@@ -197,7 +180,6 @@ X-Purge-Mode: soft
 --- response_headers
 Content-Type: text/plain
 --- response_body_like: Key
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62
@@ -205,15 +187,12 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 10: fastcgi separate-location syntax accepts soft
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 PURGE /purge_fastcgi/missing?t=fastcgi-soft
 --- error_code: 412
 --- response_headers
 Content-Type: text/html
 --- response_body_like: 412 Precondition Failed
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62
@@ -221,15 +200,12 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 11: scgi separate-location syntax accepts soft
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 PURGE /purge_scgi/missing?t=scgi-soft
 --- error_code: 412
 --- response_headers
 Content-Type: text/html
 --- response_body_like: 412 Precondition Failed
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62
@@ -237,15 +213,12 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 12: uwsgi separate-location syntax accepts soft
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 PURGE /purge_uwsgi/missing?t=uwsgi-soft
 --- error_code: 412
 --- response_headers
 Content-Type: text/html
 --- response_body_like: 412 Precondition Failed
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62

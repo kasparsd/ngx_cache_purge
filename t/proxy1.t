@@ -1,14 +1,16 @@
 # vi:filetype=perl
 
-use FindBin;
-use lib "$FindBin::Bin/lib";
-use Test::Nginx::CachePurge;
+use lib 'lib';
+use Test::Nginx::Socket;
 
 repeat_each(1);
 
 plan tests => repeat_each() * (blocks() * 4 + 3 * 1);
 
-our $http_config = Test::Nginx::CachePurge::cache_http_config();
+our $http_config = <<'_EOC_';
+    proxy_cache_path  /tmp/ngx_cache_pilot_cache keys_zone=test_cache:10m;
+    proxy_temp_path   /tmp/ngx_cache_pilot_temp 1 2;
+_EOC_
 
 our $config = <<'_EOC_';
     location /proxy {

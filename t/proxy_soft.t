@@ -1,8 +1,7 @@
 # vi:filetype=perl
 
-use FindBin;
-use lib "$FindBin::Bin/lib";
-use Test::Nginx::CachePurge;
+use lib 'lib';
+use Test::Nginx::Socket;
 
 repeat_each(1);
 

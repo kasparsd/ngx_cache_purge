@@ -648,7 +648,7 @@ X-Purge-Mode: soft
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: ^\{\"key\": \"\/proxy\/a\?t=restart\", \"cache_pilot\": \{\"purge_path\": \"reused-persisted-index\"\}\}$
+--- response_body_like: ^\{\"key\": \"\/proxy\/a\?t=restart\", \"cache_pilot\": \{\"purge_path\": \"reused-persisted-index\", \"purged\": \{\"by_key\": 0, \"by_tag\": [1-9][0-9]*\}\}\}$
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 

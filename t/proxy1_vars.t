@@ -35,6 +35,7 @@ our $config = <<'_EOC_';
 _EOC_
 
 worker_connections(128);
+timeout(10);
 no_shuffle();
 run_tests();
 
@@ -51,7 +52,6 @@ GET /proxy/passwd
 --- response_headers
 Content-Type: text/plain
 --- response_body_like: root
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx: 4: < 1.7.9
@@ -59,8 +59,6 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 2: get from cache
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 GET /proxy/passwd
 --- error_code: 200
@@ -68,7 +66,6 @@ GET /proxy/passwd
 Content-Type: text/plain
 X-Cache-Status: HIT
 --- response_body_like: root
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx: 5: < 1.7.9
@@ -76,15 +73,12 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 3: purge from cache
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 PURGE /purge/proxy/passwd
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
 --- response_body_like: \{\"key\": 
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx: 4: < 1.7.9
@@ -92,15 +86,12 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 4: purge from empty cache
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 PURGE /purge/proxy/passwd
 --- error_code: 412
 --- response_headers
 Content-Type: text/html
 --- response_body_like: 412 Precondition Failed
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx: 4: < 1.7.9
@@ -108,8 +99,6 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 5: get from source
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 GET /proxy/passwd
 --- error_code: 200
@@ -117,7 +106,6 @@ GET /proxy/passwd
 Content-Type: text/plain
 X-Cache-Status: MISS
 --- response_body_like: root
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx: 5: < 1.7.9
@@ -125,8 +113,6 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 6: get from cache
---- http_config eval: $::http_config
---- config eval: $::config
 --- request
 GET /proxy/passwd
 --- error_code: 200
@@ -134,7 +120,6 @@ GET /proxy/passwd
 Content-Type: text/plain
 X-Cache-Status: HIT
 --- response_body_like: root
---- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx: 5: < 1.7.9
