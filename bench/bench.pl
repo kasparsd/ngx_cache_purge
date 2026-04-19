@@ -194,6 +194,7 @@ prepare_output_dir($options{out_dir});
 my $timestamp = strftime('%Y%m%d-%H%M%S', localtime());
 my $run_dir = "$options{out_dir}/$timestamp";
 make_path($run_dir);
+ensure_empty_file("$run_dir/nginx_error.log");
 initialize_runtime_paths($run_dir);
 log_info('Preparing benchmark runtime state');
 cleanup_runtime_state();
@@ -937,18 +938,24 @@ sub record_nginx_error_log {
     my $chunk = $pending_nginx_error_log;
     $pending_nginx_error_log = '';
     $chunk .= consume_nginx_error_log();
-    return undef unless length $chunk;
 
     my $safe_label = sanitize_config_name($label);
     my $scenario_log = "$run_dir/${safe_label}_nginx_error.log";
-    append_text_file($scenario_log, $chunk);
-    append_text_file("$run_dir/nginx_error.log", $chunk);
+    ensure_empty_file($scenario_log);
+    ensure_empty_file("$run_dir/nginx_error.log");
+
+    if (length $chunk) {
+        append_text_file($scenario_log, $chunk);
+        append_text_file("$run_dir/nginx_error.log", $chunk);
+    }
 
     my $line_count = scalar grep { length $_ } split /\n/, $chunk;
     my $error_summary = summarize_nginx_error_chunk($chunk);
 
-    log_info("nginx emitted error-log output for $label");
-    print_nginx_error_log($label, $chunk);
+    if (length $chunk) {
+        log_info("nginx emitted error-log output for $label");
+        print_nginx_error_log($label, $chunk);
+    }
 
     return {
         file       => $scenario_log,
@@ -1019,6 +1026,13 @@ sub append_text_file {
 
     open my $fh, '>>', $file or die "open($file): $!";
     print {$fh} $text or die "write($file): $!";
+    close $fh or die "close($file): $!";
+}
+
+sub ensure_empty_file {
+    my ($file) = @_;
+
+    open my $fh, '>>', $file or die "open($file): $!";
     close $fh or die "close($file): $!";
 }
 
