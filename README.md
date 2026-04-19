@@ -659,15 +659,14 @@ make bench-quick
 
 ### Benchmark suite
 
-The repository includes a container-only benchmark harness under `bench/` for measuring purge behavior under concurrent GET load. It runs seven scenarios against the built module with no extra container dependencies:
+The repository includes a container-only benchmark harness under `bench/` for measuring purge performance under concurrent GET load. Feature validation for key-index readiness, exact-key fanout, and wildcard key-prefix assist now lives in the regular `Test::Nginx` suite (`t/proxy_key_index.t` and `t/proxy_key_index_redis.t`), so the benchmark stays focused on steady-state throughput and latency.
+
+It runs four scenarios against the built module with no extra container dependencies:
 
 - exact-key soft purge
 - wildcard soft purge
 - cache-tag soft purge with SQLite index
 - cache-tag soft purge with Redis index
-- exact-key soft purge with key-index readiness checks
-- exact-key soft purge with `Vary` fanout over `X-Variant: a|b|c`
-- wildcard soft purge with key-index assist preflight
 
 Each scenario warms 1000 cached objects, starts 50 keep-alive GET workers, then runs a sequential PURGE worker in parallel while collecting:
 
@@ -688,36 +687,9 @@ cat /workspace/bench/results/latest/summary.txt
 
 Results are written under `bench/results/<timestamp>/` with one JSON file per scenario plus `summary.json`, `summary.txt`, and nginx log artifacts. The `bench/results/latest` symlink points at the most recent run. During the Redis scenario, `bench/bench.pl` starts a local `redis-server` on `127.0.0.1:16379`, uses `bench/nginx_redis.conf`, and shuts Redis down during teardown. The runner always creates an aggregated `nginx_error.log` plus per-startup and per-scenario `*_nginx_error.log` files so CI artifact paths stay stable; when nginx emits log output, `bench/bench.pl` also prints that chunk inline and appends it to those files.
 
-The benchmark suite uses `bench/nginx.conf` for the baseline SQLite-backed scenarios, `bench/nginx_indexed.conf` for the indexed exact and wildcard scenarios, `bench/nginx_fanout.conf` for the exact-key fanout scenario, and `bench/nginx_redis.conf` for the Redis-backed scenario. If more benchmark layouts are added later, drop another `*.conf` template into `bench/`, assign scenarios to it in `bench/bench.pl`, and the runner will restart nginx when either the template or backend changes. You can also override the template for a whole run with `--config-template <name-or-path>`.
+The benchmark suite uses `bench/nginx.conf` for the baseline SQLite-backed scenarios and `bench/nginx_redis.conf` for the Redis-backed scenario. If more benchmark layouts are added later, drop another `*.conf` template into `bench/`, assign scenarios to it in `bench/bench.pl`, and the runner will restart nginx when either the template or backend changes. You can also override the template for a whole run with `--config-template <name-or-path>`.
 
-`bench/bench.pl` can also fail the run on threshold regressions with `--assert-file <path>`. The default assertion file is JSON with optional `defaults` and per-scenario rules under `scenarios`, keyed by the scenario ids `exact`, `exact-indexed`, `exact-fanout`, `wild`, `wild-indexed`, `tag-sqlite`, and `tag-redis`. Metrics use dot-paths into the summary object, for example `get.rps`, `get.cache_hit_rate`, `get.latency_us.p95`, `purge.rps`, and index diagnostics such as `index_report.used_assist` or `index_report.wildcard_preflight_succeeded`. Each rule supports `min` and/or `max`. See `bench/assertions.example.json` for the full suite. `bench/assertions.isolated.example.json` remains available if you want to run only the three index-heavy scenarios.
-
-#### Focused Index Subset
-
-The harness still supports running only the three index-focused scenarios when you want a shorter diagnostic loop:
-
-- exact-key soft purge with key-index readiness checks (`exact-indexed`)
-- exact-key soft purge with `Vary` fanout over `X-Variant: a|b|c` (`exact-fanout`)
-- wildcard soft purge with key-index assist preflight (`wild-indexed`)
-
-They are part of the default suite now, but the subset remains useful for feature validation or targeted investigation.
-
-Run the isolated set inside the development container after building nginx:
-
-```bash
-make shell
-make nginx-build
-perl ./bench/bench.pl --quick --port 18080 --out-dir ./bench/results --scenario-set isolated
-cat /workspace/bench/results/latest/summary.txt
-```
-
-To target one or more isolated scenarios directly, keep using `--scenarios` as the most specific selector:
-
-```bash
-perl ./bench/bench.pl --quick --port 18080 --out-dir ./bench/results --scenarios exact-indexed,wild-indexed
-```
-
-These runs use `bench/nginx_indexed.conf` for `exact-indexed` and `wild-indexed`, and `bench/nginx_fanout.conf` for `exact-fanout`. `summary.txt` always includes `IdxPlan` and `IdxSeen`, and the per-scenario JSON artifacts always include the matching `index_plan` and `index_report` data.
+`bench/bench.pl` can also fail the run on threshold regressions with `--assert-file <path>`. The default assertion file is JSON with optional `defaults` and per-scenario rules under `scenarios`, keyed by the scenario ids `exact`, `wild`, `tag-sqlite`, and `tag-redis`. Metrics use dot-paths into the summary object, for example `get.rps`, `get.cache_hit_rate`, `get.latency_us.p95`, and `purge.rps`. Each rule supports `min` and/or `max`. See `bench/assertions.example.json` for the current performance thresholds.
 
 ### Docker Validation Config
 
