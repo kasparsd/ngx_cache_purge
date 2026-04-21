@@ -317,8 +317,8 @@ static ngx_command_t  ngx_http_cache_pilot_module_commands[] = {
 };
 
 static ngx_http_module_t  ngx_http_cache_pilot_module_ctx = {
-    NULL,                                  /* preconfiguration */
-    NULL,                                  /* postconfiguration */
+    NULL,                                          /* preconfiguration */
+    ngx_http_cache_pilot_index_postconfiguration,  /* postconfiguration */
 
     ngx_http_cache_pilot_create_main_conf, /* create main configuration */
     ngx_http_cache_pilot_init_main_conf,   /* init main configuration */
@@ -2582,15 +2582,11 @@ ngx_http_cache_pilot_init_process(ngx_cycle_t *cycle) {
         pmcf->metrics = pmcf->metrics_zone->data;
     }
 
-#if !(NGX_LINUX)
-    return NGX_OK;
-#else
     if (!ngx_http_cache_index_store_configured(pmcf)) {
         return NGX_OK;
     }
 
     return ngx_http_cache_index_process_init(cycle, pmcf);
-#endif
 }
 
 void

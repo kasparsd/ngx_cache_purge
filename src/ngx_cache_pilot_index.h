@@ -7,7 +7,6 @@
 #include <ngx_http.h>
 
 #if (NGX_LINUX)
-    #include <sys/inotify.h>
     #include <sys/stat.h>
     #include <dirent.h>
     #include <errno.h>
@@ -126,20 +125,6 @@ typedef struct {
     time_t                        last_updated_at;
 } ngx_http_cache_index_zone_index_t;
 
-typedef struct ngx_http_cache_index_watch_s {
-    ngx_rbtree_node_t             node;
-    ngx_str_t                     zone_name;
-    ngx_http_file_cache_t        *cache;
-    ngx_str_t                     path;
-    int                           wd;
-} ngx_http_cache_index_watch_t;
-
-typedef struct {
-    ngx_uint_t                    operation;
-    ngx_str_t                     zone_name;
-    ngx_http_file_cache_t        *cache;
-    ngx_str_t                     path;
-} ngx_http_cache_index_pending_op_t;
 #define NGX_HTTP_CACHE_INDEX_SHM_SIZE           (32 * 1024 * 1024)
 
 #define NGX_HTTP_CACHE_TAG_MAX_TOKENS_PER_SCAN  1000
@@ -148,18 +133,9 @@ typedef struct {
     ngx_uint_t                    initialized;
     ngx_uint_t                    active;
     ngx_uint_t                    owner;
-    ngx_connection_t             *inotify_conn;
-    ngx_event_t                   timer;
     ngx_cycle_t                  *cycle;
     ngx_rbtree_t                  zone_index;
     ngx_rbtree_node_t             zone_sentinel;
-    ngx_rbtree_t                  watch_index;
-    ngx_rbtree_node_t             watch_sentinel;
-    /* Pending store operations accumulated by the inotify read handler.
-     * The timer handler drains these to the backing store each tick, then
-     * resets the pool to reclaim memory. */
-    ngx_pool_t                   *pending_pool;
-    ngx_array_t                  *pending_ops;
 } ngx_http_cache_index_watch_runtime_t;
 
 typedef struct {
@@ -169,12 +145,11 @@ typedef struct {
     ngx_flag_t                    owner;
 } ngx_http_cache_index_store_runtime_t;
 
-#define NGX_HTTP_CACHE_TAG_OP_DELETE   1
-#define NGX_HTTP_CACHE_TAG_OP_REPLACE  2
-
 #endif
 
 extern ngx_module_t ngx_http_cache_pilot_module;
+
+ngx_int_t ngx_http_cache_pilot_index_postconfiguration(ngx_conf_t *cf);
 
 char *ngx_http_cache_index_headers_conf(ngx_conf_t *cf, ngx_command_t *cmd,
                                         void *conf);

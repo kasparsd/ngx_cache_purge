@@ -189,9 +189,9 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
     ngx_uint_t                        i;
     ngx_int_t                         rc, purged;
     ngx_int_t                         soft;
-    ngx_flag_t                        reused_persisted_index;
 #if (NGX_LINUX)
-    ngx_http_cache_index_store_t       *reader;
+    ngx_flag_t                        reused_persisted_index;
+    ngx_http_cache_index_store_t      *reader;
 #endif
 
     http_ctx = (ngx_http_conf_ctx_t *) ngx_get_conf(ngx_cycle->conf_ctx,
@@ -214,9 +214,7 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
         return NGX_DECLINED;
     }
 
-#if !(NGX_LINUX)
-    return NGX_DECLINED;
-#else
+#if (NGX_LINUX)
     reused_persisted_index = 0;
 
     reader = ngx_http_cache_index_store_reader(pmcf, r->connection->log);
