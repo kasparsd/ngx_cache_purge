@@ -750,27 +750,6 @@ ngx_http_cache_index_try_bootstrap_zones(ngx_cycle_t *cycle,
         }
 
         if (state.bootstrap_complete) {
-            pool = ngx_create_pool(4096, cycle->log);
-            if (pool == NULL) {
-                return NGX_ERROR;
-            }
-
-            if (ngx_http_cache_index_scan_recursive(writer, &zone[i], pool,
-                                                    &zone[i].cache->path->name, cycle,
-                                                    state.last_bootstrap_at) != NGX_OK) {
-                ngx_destroy_pool(pool);
-                return NGX_ERROR;
-            }
-
-            ngx_destroy_pool(pool);
-
-            state.last_bootstrap_at = ngx_time();
-            state.last_updated_at = state.last_bootstrap_at;
-            if (ngx_http_cache_index_store_set_zone_state(writer,
-                    &zone[i].zone_name, &state, cycle->log) != NGX_OK) {
-                return NGX_ERROR;
-            }
-
             ngx_http_cache_index_zone_state_cache_set(zone[i].cache, &state);
             continue;
         }
