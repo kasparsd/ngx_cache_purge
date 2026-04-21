@@ -23,7 +23,6 @@ ngx_addon_name=ngx_http_cache_pilot_module
 CACHE_PILOT_SRCS="$ngx_addon_dir/src/ngx_cache_pilot_module.c \
 $ngx_addon_dir/src/ngx_cache_pilot_index.c \
 $ngx_addon_dir/src/ngx_cache_pilot_index_store.c \
-$ngx_addon_dir/src/ngx_cache_pilot_index_watch_linux.c \
 $ngx_addon_dir/src/ngx_cache_pilot_index_watch_native.c \
 $ngx_addon_dir/src/ngx_cache_pilot_metrics.c"
 
