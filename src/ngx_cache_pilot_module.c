@@ -59,18 +59,6 @@ typedef struct ngx_http_cache_pilot_partial_ctx_s
 typedef struct ngx_http_cache_pilot_protocol_s
     ngx_http_cache_pilot_protocol_t;
 
-typedef struct {
-    ngx_uint_t  purge_path;
-    ngx_uint_t  purged_exact_hard;
-    ngx_uint_t  purged_exact_soft;
-    ngx_uint_t  purged_wildcard_hard;
-    ngx_uint_t  purged_wildcard_soft;
-    ngx_uint_t  purged_tag_hard;
-    ngx_uint_t  purged_tag_soft;
-    ngx_uint_t  purged_all_hard;
-    ngx_uint_t  purged_all_soft;
-} ngx_http_cache_pilot_request_ctx_t;
-
 static ngx_http_cache_pilot_request_ctx_t *
 ngx_http_cache_pilot_get_request_ctx(ngx_http_request_t *r);
 static ngx_str_t

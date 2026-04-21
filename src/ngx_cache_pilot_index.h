@@ -76,6 +76,20 @@ typedef enum {
     NGX_HTTP_CACHE_PILOT_PURGE_STATS_ALL
 } ngx_http_cache_pilot_purge_stats_e;
 
+typedef struct {
+    ngx_uint_t                    purge_path;
+    ngx_uint_t                    purged_exact_hard;
+    ngx_uint_t                    purged_exact_soft;
+    ngx_uint_t                    purged_wildcard_hard;
+    ngx_uint_t                    purged_wildcard_soft;
+    ngx_uint_t                    purged_tag_hard;
+    ngx_uint_t                    purged_tag_soft;
+    ngx_uint_t                    purged_all_hard;
+    ngx_uint_t                    purged_all_soft;
+    ngx_array_t                  *index_tags;
+    ngx_str_t                     index_zone_name;
+} ngx_http_cache_pilot_request_ctx_t;
+
 /*
  * Forward declaration for ngx_http_cache_pilot_metrics_shctx_t.
  * Full definition is in ngx_cache_pilot_metrics.h.
