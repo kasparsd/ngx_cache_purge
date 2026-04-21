@@ -318,7 +318,7 @@ static ngx_command_t  ngx_http_cache_pilot_module_commands[] = {
 
 static ngx_http_module_t  ngx_http_cache_pilot_module_ctx = {
     NULL,                                  /* preconfiguration */
-    NULL,                                  /* postconfiguration */
+    ngx_http_cache_pilot_index_postconfiguration,  /* postconfiguration */
 
     ngx_http_cache_pilot_create_main_conf, /* create main configuration */
     ngx_http_cache_pilot_init_main_conf,   /* init main configuration */

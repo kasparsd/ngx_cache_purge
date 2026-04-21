@@ -145,6 +145,8 @@ typedef struct {
 
 extern ngx_module_t ngx_http_cache_pilot_module;
 
+ngx_int_t ngx_http_cache_pilot_index_postconfiguration(ngx_conf_t *cf);
+
 char *ngx_http_cache_index_headers_conf(ngx_conf_t *cf, ngx_command_t *cmd,
                                         void *conf);
 ngx_flag_t ngx_http_cache_index_location_enabled(
