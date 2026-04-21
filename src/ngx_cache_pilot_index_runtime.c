@@ -712,7 +712,6 @@ ngx_http_cache_index_try_bootstrap_zones(ngx_cycle_t *cycle,
     ngx_http_cache_index_zone_t        *zone;
     ngx_http_cache_index_store_t       *writer;
     ngx_http_cache_index_zone_state_t   state;
-    ngx_pool_t                         *pool;
     ngx_uint_t                          i;
 
     if (pmcf == NULL || pmcf->zones == NULL || pmcf->zones->nelts == 0) {
