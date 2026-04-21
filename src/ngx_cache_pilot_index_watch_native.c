@@ -209,9 +209,9 @@ ngx_http_cache_pilot_index_log_handler(ngx_http_request_t *r) {
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "cache_tag index update zone:\"%V\" path:\"%V\"",
-               &ctx->index_zone_name, &r->cache->file.name);
+                   &ctx->index_zone_name, &r->cache->file.name);
 
-        if (ngx_http_cache_index_store_upsert_file_meta(writer, &ctx->index_zone_name,
+    if (ngx_http_cache_index_store_upsert_file_meta(writer, &ctx->index_zone_name,
             &r->cache->file.name, &cache_key,
             ngx_time(), 0, ctx->index_tags, r->connection->log) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
