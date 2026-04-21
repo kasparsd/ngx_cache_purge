@@ -16,9 +16,9 @@ This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-module
 - cache-tag indexing currently requires Linux
 - cache-tag and cache-key indexing use a single in-memory shared-memory backend configured with `cache_pilot_index_zone_size`
 - index contents are rebuilt from cache files after a cold restart; they do not survive nginx process restarts
-- index bootstrap is deferred while the nginx cache zone is cold (`cache loader` warmup); indexed purges become ready after the zone is warm and bootstrap has completed
+- index bootstrap is deferred while the nginx cache zone is cold (`cache loader` warmup); indexed purges become ready only after the zone is warm and the deferred bootstrap has been triggered and completed
 - the current index lifecycle does not use an inotify watcher; index freshness is maintained by startup bootstrap plus nginx-native header-filter and log-phase hooks as cache files are written
-- indexed tag purges require the cache zone to be registered with `cache_pilot_index on` and the shared-memory index for that zone to be ready; the module no longer runs an on-demand bootstrap inside the purge request path
+- indexed tag purges require the cache zone to be registered with `cache_pilot_index on` and the shared-memory index for that zone to be ready; if deferred bootstrap has not yet been finalized after loader warmup, purge/key-index request paths may trigger that bootstrap check/finalization work
 - `--with-threads` is strongly recommended so wildcard purge scans do not block the nginx event loop
 
 ## Installation Instructions
