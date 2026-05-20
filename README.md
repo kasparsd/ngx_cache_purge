@@ -648,7 +648,7 @@ make nginx-version
 
 ### GitHub Codespaces
 
-The repository also includes a `.devcontainer/devcontainer.json` that builds the same development image for GitHub Codespaces.
+The repository also includes a `.devcontainer/devcontainer.json` that builds a GitHub Codespaces devcontainer from the repository `Dockerfile`.
 
 After the Codespace is created, open a terminal in the repository root and run the usual targets directly:
 
@@ -658,7 +658,7 @@ make test
 make bench-quick
 ```
 
-For local docker-compose workflows, use `make shell` first. Inside Codespaces, the terminal already runs inside the same development image, so you can invoke the `make` targets directly from the repository root.
+For local docker-compose workflows, use `make shell` first. In GitHub Codespaces, the terminal already runs inside the devcontainer built from the repository `Dockerfile`, so you can invoke the `make` targets directly from the repository root without starting a nested container.
 
 ### Common development commands
 
