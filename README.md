@@ -658,7 +658,9 @@ make test
 make bench-quick
 ```
 
-For local docker-compose workflows, use `make shell` first. In GitHub Codespaces, the terminal already runs inside the devcontainer built from the repository `Dockerfile`, so you can invoke the `make` targets directly from the repository root without starting a nested container.
+For local docker-compose workflows, use `make shell` first.
+In GitHub Codespaces, the terminal already runs inside the devcontainer built from the repository `Dockerfile`.
+Invoke the `make` targets directly from the repository root without starting a nested container.
 
 ### Common development commands
 
