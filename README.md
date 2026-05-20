@@ -658,7 +658,7 @@ make test
 make bench-quick
 ```
 
-For local host workflows, use `make shell` first. Inside Codespaces, the terminal already runs inside the same development image, so you can invoke the `make` targets directly from the repository root.
+For local docker-compose workflows, use `make shell` first. Inside Codespaces, the terminal already runs inside the same development image, so you can invoke the `make` targets directly from the repository root.
 
 ### Common development commands
 
