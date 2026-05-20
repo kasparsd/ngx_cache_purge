@@ -658,7 +658,7 @@ make test
 make bench-quick
 ```
 
-You do not need `make shell` inside Codespaces because the terminal already runs inside the development container.
+For local host workflows, use `make shell` first. Inside Codespaces, the terminal already runs inside the same development image, so you can invoke the `make` targets directly from the repository root.
 
 ### Common development commands
 
