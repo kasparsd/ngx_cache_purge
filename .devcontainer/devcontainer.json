@@ -8,12 +8,6 @@
     8080
   ],
   "customizations": {
-    "codespaces": {
-      "openFiles": [
-        "README.md",
-        "Makefile"
-      ]
-    },
     "vscode": {
       "extensions": [
         "ms-vscode.cpptools",
