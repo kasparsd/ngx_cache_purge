@@ -662,9 +662,15 @@ make bench-quick
 
 ```bash
 make format
+make compile-commands
+make clang-tidy
 make test
 make bench-quick
 ```
+
+- `make format` uses `clang-format` with the repository `.clang-format`.
+- `make compile-commands` uses `bear` to generate `compile_commands.json` at the repository root for `clangd` and `clang-tidy`.
+- `make clang-tidy` runs `clang-tidy` with `clang-analyzer` and `bugprone` checks against module sources.
 
 ### Benchmark suite
 

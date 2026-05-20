@@ -40,7 +40,7 @@ jobs:
       - name: Lint code
         run: |
           docker compose run --rm dev make format
-          git diff --exit-code -- *.c
+          git diff --exit-code -- src/*.c src/*.h
 
       - name: Run tests
         run: docker compose run --rm dev make test

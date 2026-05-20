@@ -5,7 +5,7 @@ MODULE_DIR ?= $(CURDIR)
 JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 DOCKER_COMPOSE ?= docker compose
 
-.PHONY: help image shell nginx-build nginx-build-dynamic nginx-version format test bench bench-quick
+.PHONY: help image shell nginx-build nginx-build-dynamic nginx-version compile-commands clang-tidy format test bench bench-quick
 
 help:
 	@printf '%s\n' \
@@ -13,6 +13,8 @@ help:
 		'make nginx-build         Build NGINX with this module' \
 		'make nginx-build-dynamic Build this module as objs/ngx_http_cache_pilot_module.so' \
 		'make nginx-version       Build info for the installed NGINX binary' \
+		'make compile-commands    Generate compile_commands.json for clangd/clang-tidy' \
+		'make clang-tidy          Run clang-tidy checks for module sources' \
 		'make format              Run the repository formatter' \
 		'make test                Run the Test::Nginx suite' \
 		'make bench               Run full benchmark suite (60s per scenario)' \
@@ -46,8 +48,25 @@ nginx-build-dynamic:
 nginx-version:
 	"$(NGINX_BUILD_PREFIX)/sbin/nginx" -V
 
+compile-commands:
+	test -d "$(NGINX_SRC_DIR)"
+	cd "$(NGINX_SRC_DIR)" && ./configure \
+		--prefix="$(NGINX_BUILD_PREFIX)" \
+		--with-debug \
+		--with-threads \
+		--with-http_ssl_module \
+		--add-module="$(MODULE_DIR)"
+	$(MAKE) -C "$(NGINX_SRC_DIR)" clean
+	bear --output "$(MODULE_DIR)/compile_commands.json" -- $(MAKE) -C "$(NGINX_SRC_DIR)" -j"$(JOBS)"
+
+clang-tidy: compile-commands
+	clang-tidy \
+		-checks='-*,clang-analyzer-*,bugprone-*' \
+		-p "$(MODULE_DIR)" \
+		src/*.c
+
 format:
-	astyle -v --options=.astylerc src/*.c src/*.h
+	clang-format -i src/*.c src/*.h
 	dos2unix src/*
 
 test:
