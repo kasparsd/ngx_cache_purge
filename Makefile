@@ -1,7 +1,8 @@
 NGINX_VERSION ?= 1.25.5
 NGINX_SRC_DIR ?= /opt/nginx-src/nginx-$(NGINX_VERSION)
 NGINX_BUILD_PREFIX ?= /opt/nginx
-MODULE_DIR ?= /workspace # TODO: make this relative to the project.
+PROJECT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+MODULE_DIR ?= $(PROJECT_DIR)
 JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 DOCKER_COMPOSE ?= docker compose
 
