@@ -650,7 +650,7 @@ make nginx-version
 
 The repository also includes a `.devcontainer/devcontainer.json` that builds a GitHub Codespaces devcontainer from the repository `Dockerfile`.
 
-After the Codespace is created, open a terminal in the repository root and run the usual targets directly. The local docker-compose workflow is unchanged and still starts with `make shell`.
+After the Codespace is created, open a terminal in the repository root and run the usual targets directly. The docker-compose workflow described elsewhere in this README is for local development only and is not needed in Codespaces.
 
 ```bash
 make nginx-build
