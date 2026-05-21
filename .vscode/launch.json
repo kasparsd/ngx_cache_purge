@@ -31,7 +31,7 @@
       "name": "Debug nginx kitchen-sink config (docker compose)",
       "type": "cppdbg",
       "request": "launch",
-      "program": "/opt/nginx/sbin/nginx",
+      "program": "/workspace/.nginx-debug/sbin/nginx",
       "args": [
         "-p",
         "/workspace",
@@ -42,14 +42,16 @@
       ],
       "cwd": "/workspace",
       "MIMode": "gdb",
-      "preLaunchTask": "docker-debug-start",
-      "postDebugTask": "docker-debug-stop",
+      "preLaunchTask": "docker-debug-build",
       "pipeTransport": {
         "pipeProgram": "docker",
         "pipeArgs": [
-          "exec",
-          "-i",
-          "ngx-cache-pilot-debug",
+          "compose",
+          "run",
+          "--rm",
+          "--service-ports",
+          "-T",
+          "dev",
           "sh",
           "-lc"
         ],
