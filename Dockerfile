@@ -21,7 +21,9 @@ RUN apt-get update \
         cpanminus \
         curl \
         dos2unix \
+        gdb \
         git \
+        lcov \
         libpcre3-dev \
         libssl-dev \
         perl \

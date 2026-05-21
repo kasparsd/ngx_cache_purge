@@ -6,5 +6,9 @@ services:
         NGINX_VERSION: ${NGINX_VERSION:-1.25.5}
     image: ngx-cache-pilot-dev:${NGINX_VERSION:-1.25.5}
     working_dir: /workspace
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
     volumes:
       - .:/workspace

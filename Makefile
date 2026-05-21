@@ -4,19 +4,25 @@ NGINX_BUILD_PREFIX ?= /opt/nginx
 MODULE_DIR ?= $(CURDIR)
 JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 DOCKER_COMPOSE ?= docker compose
+COVERAGE_DIR ?= $(MODULE_DIR)/coverage
+COVERAGE_INFO ?= $(COVERAGE_DIR)/lcov.info
 
-.PHONY: help image shell nginx-build nginx-build-dynamic nginx-version compile-commands clang-tidy format test bench bench-quick
+.PHONY: help image shell nginx-build nginx-build-dynamic nginx-build-coverage nginx-version compile-commands clang-tidy format test coverage coverage-html coverage-clean bench bench-quick
 
 help:
 	@printf '%s\n' \
 		'make shell               Open a shell in the development container' \
 		'make nginx-build         Build NGINX with this module' \
 		'make nginx-build-dynamic Build this module as objs/ngx_http_cache_pilot_module.so' \
+		'make nginx-build-coverage Build NGINX with gcov coverage flags' \
 		'make nginx-version       Build info for the installed NGINX binary' \
 		'make compile-commands    Generate compile_commands.json for clangd/clang-tidy' \
 		'make clang-tidy          Run clang-tidy checks for module sources' \
 		'make format              Run the repository formatter' \
 		'make test                Run the Test::Nginx suite' \
+		'make coverage            Run tests and capture lcov coverage for src/*' \
+		'make coverage-html       Generate HTML coverage report under coverage/html' \
+		'make coverage-clean      Remove generated coverage artifacts' \
 		'make bench               Run full benchmark suite (60s per scenario)' \
 		'make bench-quick         Run abbreviated benchmark suite (15s per scenario)'
 
@@ -45,6 +51,20 @@ nginx-build-dynamic:
 		--add-dynamic-module="$(MODULE_DIR)"
 	$(MAKE) -C "$(NGINX_SRC_DIR)" -j"$(JOBS)" modules
 
+nginx-build-coverage:
+	test -d "$(NGINX_SRC_DIR)"
+	cd "$(NGINX_SRC_DIR)" && ./configure \
+		--prefix="$(NGINX_BUILD_PREFIX)" \
+		--with-debug \
+		--with-threads \
+		--with-http_ssl_module \
+		--with-cc-opt='-O0 --coverage' \
+		--with-ld-opt='--coverage' \
+		--add-module="$(MODULE_DIR)"
+	$(MAKE) -C "$(NGINX_SRC_DIR)" clean
+	$(MAKE) -C "$(NGINX_SRC_DIR)" -j"$(JOBS)"
+	$(MAKE) -C "$(NGINX_SRC_DIR)" install
+
 nginx-version:
 	"$(NGINX_BUILD_PREFIX)/sbin/nginx" -V
 
@@ -72,6 +92,29 @@ format:
 test:
 	$(MAKE) nginx-build
 	TEST_NGINX_BINARY="$(NGINX_BUILD_PREFIX)/sbin/nginx" prove ./t
+
+coverage:
+	rm -rf "$(COVERAGE_DIR)"
+	mkdir -p "$(COVERAGE_DIR)"
+	$(MAKE) nginx-build-coverage
+	find "$(NGINX_SRC_DIR)" -name '*.gcda' -delete
+	TEST_NGINX_BINARY="$(NGINX_BUILD_PREFIX)/sbin/nginx" prove ./t
+	lcov --capture \
+		--directory "$(NGINX_SRC_DIR)" \
+		--base-directory "$(MODULE_DIR)" \
+		--output-file "$(COVERAGE_INFO)" \
+		--ignore-errors mismatch,source
+	lcov --extract "$(COVERAGE_INFO)" "$(MODULE_DIR)/src/*" \
+		--output-file "$(COVERAGE_INFO)" \
+		--ignore-errors mismatch,source
+
+coverage-html: coverage
+	genhtml "$(COVERAGE_INFO)" --output-directory "$(COVERAGE_DIR)/html"
+
+coverage-clean:
+	rm -rf "$(COVERAGE_DIR)"
+	find "$(NGINX_SRC_DIR)" -name '*.gcda' -delete
+	find "$(NGINX_SRC_DIR)" -name '*.gcno' -delete
 
 bench: nginx-build
 	perl ./bench/bench.pl \

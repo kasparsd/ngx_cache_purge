@@ -1,1 +1,3 @@
 bench/results/*/
+compile_commands.json
+coverage/
