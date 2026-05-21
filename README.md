@@ -89,8 +89,7 @@ If you want the included containerized build environment, tests, or the manual v
 - wildcard URI purge using a trailing `*`
 - cache-tag and surrogate-key purge
 
-When `cache_pilot_index_zone_size` and `cache_pilot_index` are enabled for a zone,
-the module also maintains a cache-key index. That key index is used to:
+When `cache_pilot_index_zone_size` and `cache_pilot_index` are enabled for a zone, the module also maintains a cache-key index. That key index is used to:
 
 - fan out exact-key hard purges across files that share the same key (for example, `Vary` variants)
 - serve wildcard key purges from in-memory key metadata before falling back to filesystem walking
