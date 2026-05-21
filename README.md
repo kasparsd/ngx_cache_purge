@@ -20,10 +20,13 @@ This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-module
 - the current index lifecycle does not use an inotify watcher; index freshness is maintained by startup bootstrap plus nginx-native header-filter and log-phase hooks as cache files are written
 - indexed tag purges require the cache zone to be registered with `cache_pilot_index on` and the shared-memory index for that zone to be ready; if deferred bootstrap has not yet been finalized after loader warmup, purge/key-index request paths may trigger that bootstrap check/finalization work
 - `--with-threads` is strongly recommended so wildcard purge scans do not block the nginx event loop
+- nginx must be built with HTTP cache support enabled; configuring nginx with `--without-http-cache` is unsupported for this module
 
 ## Installation Instructions
 
 You need to build NGINX with this repository as an extra module via `--add-module` or `--add-dynamic-module`; it is not bundled with upstream NGINX.
+
+This module requires nginx HTTP cache support. A configure run that uses `--without-http-cache` will fail immediately when this module is added.
 
 For most users, the recommended installation path is to build a dynamic module against the exact NGINX version already installed on the target system.
 
