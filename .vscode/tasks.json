@@ -1,0 +1,44 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "docker-debug-start",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "compose",
+        "run",
+        "--rm",
+        "--service-ports",
+        "--name",
+        "ngx-cache-pilot-debug",
+        "dev",
+        "bash",
+        "-lc",
+        "make nginx-build && echo NGX_CACHE_PILOT_DEBUG_READY && exec sleep infinity"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": ".+"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".+",
+          "endsPattern": "NGX_CACHE_PILOT_DEBUG_READY"
+        }
+      }
+    },
+    {
+      "label": "docker-debug-stop",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "rm",
+        "-f",
+        "ngx-cache-pilot-debug"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

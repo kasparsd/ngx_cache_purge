@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug nginx kitchen-sink config",
+      "name": "Debug nginx kitchen-sink config (devcontainer)",
       "type": "cppdbg",
       "request": "launch",
       "program": "/opt/nginx/sbin/nginx",
@@ -17,6 +17,48 @@
       "cwd": "${workspaceFolder}",
       "MIMode": "gdb",
       "miDebuggerPath": "/usr/bin/gdb",
+      "externalConsole": false,
+      "stopAtEntry": false,
+      "setupCommands": [
+        {
+          "description": "Enable GDB pretty printing",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "Debug nginx kitchen-sink config (docker compose)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "/opt/nginx/sbin/nginx",
+      "args": [
+        "-p",
+        "/workspace",
+        "-c",
+        "/workspace/examples/kitchen-sink.conf",
+        "-g",
+        "daemon off;"
+      ],
+      "cwd": "/workspace",
+      "MIMode": "gdb",
+      "preLaunchTask": "docker-debug-start",
+      "postDebugTask": "docker-debug-stop",
+      "pipeTransport": {
+        "pipeProgram": "docker",
+        "pipeArgs": [
+          "exec",
+          "-i",
+          "ngx-cache-pilot-debug",
+          "sh",
+          "-lc"
+        ],
+        "debuggerPath": "/usr/bin/gdb",
+        "pipeCwd": "${workspaceFolder}"
+      },
+      "sourceFileMap": {
+        "/workspace": "${workspaceFolder}"
+      },
       "externalConsole": false,
       "stopAtEntry": false,
       "setupCommands": [
