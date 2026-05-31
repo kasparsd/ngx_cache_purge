@@ -708,7 +708,7 @@ make bench-quick
 
 Treat the Git tag as the upstream module version. Use plain semantic versions such as `1.2.0`; the tag, GitHub release, and `CHANGELOG.md` release entry should all match.
 
-Use `debian/changelog` for the Debian package version. For an upstream `1.2.0` release, the first package upload should be `1.2.0-1`. If you need to rebuild or republish the same upstream release without changing the upstream version, bump only the Debian revision (`1.2.0-2`, `1.2.0-3`, and so on).
+Use `debian/changelog` for the Debian package version. For an upstream `1.2.0` release, the first package upload should be `1.2.0-1`. If you need to rebuild or republish the same upstream release without changing the upstream version, bump only the Debian revision (`1.2.0-2`, `1.2.0-3`, and so on). Keep the release notes aligned across `CHANGELOG.md` and `debian/changelog`, but do not collapse them into one file: Debian tooling reads `debian/changelog` directly, so it needs to remain in Debian's package changelog format even when it is summarizing the same release.
 
 Before tagging a release, run the usual validation flow from this repository:
 
@@ -722,7 +722,7 @@ docker compose run --rm packaging make debian-package-smoke
 Release checklist:
 
 1. Move release notes out of `CHANGELOG.md`'s `## UNRELEASED` section into a dated release entry and reopen `## UNRELEASED` for follow-up work.
-2. Update the top entry in `debian/changelog` to the release version and summarize the packaging-facing changes.
+2. Update the top entry in `debian/changelog` to the release version, keeping it in sync with the same release notes from `CHANGELOG.md` in Debian changelog format.
 3. Commit the release preparation.
 4. Create an annotated Git tag for the upstream version, for example `git tag -a 1.2.0 -m "Release 1.2.0"`.
 5. Push the release commit and tag, then publish the GitHub release from that tag.
