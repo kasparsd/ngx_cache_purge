@@ -44,10 +44,12 @@ jobs:
         env:
           LAUNCHPAD_GPG_KEY_ID: ${{ secrets.LAUNCHPAD_GPG_KEY_ID }}
           LAUNCHPAD_GPG_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_GPG_PRIVATE_KEY }}
+          LAUNCHPAD_PPA: ppa:kasparsd/testing
         run: |
           docker compose run --rm \
             -e LAUNCHPAD_GPG_KEY_ID \
             -e LAUNCHPAD_GPG_PRIVATE_KEY \
+            -e LAUNCHPAD_PPA \
             packaging make launchpad-ppa-upload \
               DEBIAN_DISTRIBUTION=${{ matrix.series }} \
               DEBIAN_VERSION_SUFFIX=+ppa${PPA_REVISION}~${{ matrix.series_suffix }}
