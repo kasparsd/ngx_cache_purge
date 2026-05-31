@@ -684,7 +684,7 @@ docker compose pull packaging
 docker compose run --rm packaging make debian-package-smoke
 ```
 
-The packaging container is published as the public GitHub Container Registry image `ghcr.io/wpelevator/ngx-cache-pilot--packaging:1.0.0`. Versioned development containers are published as `ghcr.io/wpelevator/ngx-cache-pilot--dev:<nginx-version>` for the NGINX versions validated in CI. Local `docker compose build dev` and `docker compose build packaging` still rebuild the images when you need to test container changes.
+The packaging container is published as the public GitHub Container Registry image `ghcr.io/wpelevator/ngx-cache-pilot--packaging`. Versioned development containers are published as `ghcr.io/wpelevator/ngx-cache-pilot--dev:<nginx-version>` for the NGINX versions validated in CI. Local `docker compose build dev` and `docker compose build packaging` still rebuild the images when you need to test container changes.
 
 The same packaging container can also prepare Launchpad PPA source uploads. Launchpad accepts signed source packages and builds the published `.deb` packages in the PPA; local binary `.deb` builds remain available through `make debian-package` and `make debian-package-smoke`.
 
