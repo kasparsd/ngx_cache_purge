@@ -24,6 +24,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Pull packaging image
+        continue-on-error: true
         run: docker compose pull packaging
 
       - name: Build shared source tarball
@@ -55,6 +56,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Pull packaging image
+        continue-on-error: true
         run: docker compose pull packaging
 
       - name: Download shared source tarball

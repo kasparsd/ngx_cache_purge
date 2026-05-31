@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Pull docker images
+        continue-on-error: true
         run: docker compose pull dev
 
       - name: Lint code
@@ -49,6 +50,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Pull docker images
+        continue-on-error: true
         run: docker compose pull packaging
 
       - name: Build Debian package and run smoke test
