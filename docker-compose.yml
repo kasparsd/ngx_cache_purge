@@ -9,7 +9,7 @@ services:
     volumes:
       - .:/workspace
   packaging:
-    image: ghcr.io/wpelevator/ngx-cache-pilot--packaging:1.0.0
+    image: ghcr.io/wpelevator/ngx-cache-pilot--packaging:1.0.1
     build:
       context: .
       dockerfile: Dockerfile.packaging
