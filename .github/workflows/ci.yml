@@ -44,3 +44,46 @@ jobs:
 
       - name: Run tests
         run: docker compose run --rm dev make test
+
+  debian-package:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            curl \
+            debhelper \
+            devscripts \
+            fakeroot \
+            nginx-core \
+            nginx-dev \
+            python3
+
+      - name: Build Debian source package
+        run: dpkg-buildpackage -S -us -uc
+
+      - name: Build Debian binary package
+        run: dpkg-buildpackage -b -us -uc
+
+      - name: Install built module package
+        run: |
+          sudo apt-get install -y ../libnginx-mod-http-cache-pilot_*_$(dpkg --print-architecture).deb
+
+      - name: Run package smoke test
+        run: sudo ./debian/tests/smoke
+
+      - name: Upload Debian package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-package-artifacts
+          path: |
+            ../libnginx-mod-http-cache-pilot_*.buildinfo
+            ../libnginx-mod-http-cache-pilot_*.changes
+            ../libnginx-mod-http-cache-pilot_*.deb
+            ../libnginx-mod-http-cache-pilot_*.dsc
+            ../libnginx-mod-http-cache-pilot_*.tar.*
+          if-no-files-found: error

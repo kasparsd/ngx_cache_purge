@@ -10,9 +10,14 @@ _This module is not distributed with the NGINX source. See [Installation Instruc
 
 This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-modules/ngx_cache_purge) to add support for soft purgaging and cache tags (also known as surrogate keys).
 
+Tagged upstream releases are the packaging input. Distribution packages should ship this module as a version-matched dynamic nginx module, not as a standalone binary intended to work across arbitrary nginx builds.
+
 ## Compatibility And Limits
 
+- validated in source-build CI against nginx `1.26.3`, `1.28.3`, and `1.29.8`
+- packaged installs must target the matching distro nginx ABI (for example Debian/Ubuntu `libnginx-mod-http-cache-pilot`)
 - cache-tag indexing currently requires Linux
+- packaged cache-tag indexing remains Linux-only even when the module itself is built as a dynamic module
 - cache-tag and cache-key indexing use a single in-memory shared-memory backend configured with `cache_pilot_index_zone_size`
 - index contents are rebuilt from cache files after a cold restart; they do not survive nginx process restarts
 - index bootstrap is deferred while the nginx cache zone is cold (`cache loader` warmup); indexed purges become ready only after the zone is warm and the deferred bootstrap has been triggered and completed
@@ -20,14 +25,34 @@ This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-module
 - indexed tag purges require the cache zone to be registered with `cache_pilot_index on` and the shared-memory index for that zone to be ready; if deferred bootstrap has not yet been finalized after loader warmup, purge/key-index request paths may trigger that bootstrap check/finalization work
 - `--with-threads` is strongly recommended so wildcard purge scans do not block the nginx event loop
 - nginx must be built with HTTP cache support enabled; configuring nginx with `--without-http-cache` is unsupported for this module
+- dynamic-module deployments still depend on the corresponding nginx cache modules such as `ngx_http_proxy_module`, `ngx_http_fastcgi_module`, `ngx_http_scgi_module`, and `ngx_http_uwsgi_module`; if those are loadable on your platform, load them before `ngx_http_cache_pilot_module`
 
 ## Installation Instructions
 
-You need to build NGINX with this repository as an extra module via `--add-module` or `--add-dynamic-module`; it is not bundled with upstream NGINX.
+Use a distro-native package when one is available. Otherwise build against the exact nginx source or nginx development package that matches the target system.
 
 This module requires nginx HTTP cache support. A configure run that uses `--without-http-cache` will fail immediately when this module is added.
 
-For most users, the recommended installation path is to build a dynamic module against the exact NGINX version already installed on the target system.
+For most users, the recommended installation path is a dynamic module package built for the exact nginx version or nginx ABI already installed on the target system.
+
+### Packaged install (Debian/Ubuntu)
+
+The Debian/Ubuntu packaging model is a distro-native dynamic module package named `libnginx-mod-http-cache-pilot`.
+
+- build the package against the target distro nginx ABI
+- install it alongside the matching packaged nginx build
+- let the package manager place `ngx_http_cache_pilot_module.so` under `/usr/lib/nginx/modules/`
+- let the package manager enable `mod-http-cache-pilot.conf` under `/etc/nginx/modules-enabled/`
+
+When a repository or PPA publishes this package, the install flow is:
+
+```bash
+sudo apt install nginx libnginx-mod-http-cache-pilot
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+If your distro splits required upstream nginx cache modules into separate dynamic-module packages, make sure those modules are enabled before `mod-http-cache-pilot.conf`.
 
 ### Recommended: build a dynamic module for your installed NGINX version
 
@@ -55,6 +80,20 @@ make modules
 This produces `objs/ngx_http_cache_pilot_module.so`, which you can then copy into your nginx modules directory and load with `load_module`.
 
 Dynamic-module builds still depend on the corresponding nginx upstream cache modules such as `ngx_http_proxy_module`, `ngx_http_fastcgi_module`, `ngx_http_scgi_module`, and `ngx_http_uwsgi_module`. In packaged deployments those modules must either be built into nginx or loaded before `ngx_http_cache_pilot_module.so`.
+
+### Enabling and loading the module
+
+Source builds typically add this line near the top of `nginx.conf`:
+
+```nginx
+load_module modules/ngx_http_cache_pilot_module.so;
+```
+
+Packaged Debian/Ubuntu installs should use the package-managed module load file instead of a hand-edited `load_module` line:
+
+- module binary: `/usr/lib/nginx/modules/ngx_http_cache_pilot_module.so`
+- module load file: `/usr/share/nginx/modules-available/mod-http-cache-pilot.conf`
+- enabled symlink: `/etc/nginx/modules-enabled/50-mod-http-cache-pilot.conf`
 
 If a dynamic-module deployment fails at runtime with a missing `ngx_modules` symbol, that usually indicates a packaging or build-flow problem outside the normal nginx `auto/module` path rather than an index-store configuration issue in this repository.
 
