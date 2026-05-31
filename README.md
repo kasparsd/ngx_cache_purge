@@ -739,6 +739,8 @@ Use `debian/changelog` for the Debian package version. For an upstream `1.2.0` r
 
 PPA uploads append an Ubuntu-series suffix to the Debian package version in a temporary build tree under `.pkg-build/`; the working-tree `debian/changelog` is not modified. Use suffixes like `+ppa1~jammy1` and `+ppa1~noble1`, incrementing the `ppa` revision when rebuilding the same Debian package version for Launchpad.
 
+When `DEBIAN_DISTRIBUTION` is not set, source package builds preserve the distribution from `debian/changelog`. Set `DEBIAN_DISTRIBUTION` only when building for a specific target series such as a Launchpad PPA upload.
+
 The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy` and `noble` source uploads to `ppa:wpelevator/packages`. It requires these repository secrets:
 
 - `LAUNCHPAD_GPG_KEY_ID`

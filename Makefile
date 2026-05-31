@@ -6,7 +6,7 @@ JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 DOCKER_COMPOSE ?= docker compose
 DEBIAN_BUILD_ROOT ?= $(CURDIR)/.pkg-build
 DEBIAN_SOURCE_PACKAGE ?= libnginx-mod-http-cache-pilot
-DEBIAN_DISTRIBUTION ?= noble
+DEBIAN_DISTRIBUTION ?=
 DEBIAN_VERSION_SUFFIX ?=
 LAUNCHPAD_PPA ?= ppa:wpelevator/packages
 
@@ -109,14 +109,16 @@ debian-source-package:
 		--exclude="*.orig.tar.gz" \
 		-cf - . | tar -xf - -C "$$source_dir"; \
 	tar -C "$$build_root" -czf "$$orig_tarball" "$${source_package}-$${upstream_version}"; \
-	if [ "$$source_version" != "$$package_version" ] || [ "$(DEBIAN_DISTRIBUTION)" != "$$(dpkg-parsechangelog -l "$(CURDIR)/debian/changelog" -SDistribution)" ]; then \
+	changelog_distribution="$$(dpkg-parsechangelog -l "$(CURDIR)/debian/changelog" -SDistribution)"; \
+	source_distribution="$${DEBIAN_DISTRIBUTION:-$$changelog_distribution}"; \
+	if [ "$$source_version" != "$$package_version" ] || [ "$$source_distribution" != "$$changelog_distribution" ]; then \
 		cd "$$source_dir" && \
 			DEBFULLNAME="$${DEBFULLNAME:-WPElevator Packaging Team}" \
 			DEBEMAIL="$${DEBEMAIL:-hi@wpelevator.com}" \
 			dch --newversion "$$source_version" \
-				--distribution "$(DEBIAN_DISTRIBUTION)" \
+				--distribution "$$source_distribution" \
 				--force-distribution \
-				"Build for $(DEBIAN_DISTRIBUTION)."; \
+				"Build for $$source_distribution."; \
 	fi; \
 	cd "$$source_dir" && dpkg-buildpackage -S -sa -us -uc
 
