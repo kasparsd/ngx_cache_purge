@@ -28,6 +28,8 @@ header_value() {
 mkdir -p "${workdir}/backend" "${workdir}/cache" "${workdir}/logs" "${workdir}/client_temp"
 printf 'cache-pilot backend\n' > "${workdir}/backend/index.html"
 
+nginx_user="$(id -un)"
+
 python3 -m http.server 18081 --bind 127.0.0.1 --directory "${workdir}/backend" >/dev/null 2>&1 &
 backend_pid=$!
 sleep 1
@@ -38,7 +40,8 @@ test -L /etc/nginx/modules-enabled/50-mod-http-cache-pilot.conf
 
 cat > "${workdir}/nginx.conf" <<EOF
 pid logs/nginx.pid;
-include /etc/nginx/modules-enabled/*.conf;
+load_module /usr/lib/nginx/modules/ngx_http_cache_pilot_module.so;
+user ${nginx_user};
 
 events {}
 
