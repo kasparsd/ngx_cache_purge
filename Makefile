@@ -6,8 +6,11 @@ JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 DOCKER_COMPOSE ?= docker compose
 DEBIAN_BUILD_ROOT ?= $(CURDIR)/.pkg-build
 DEBIAN_SOURCE_PACKAGE ?= libnginx-mod-http-cache-pilot
+DEBIAN_DISTRIBUTION ?= noble
+DEBIAN_VERSION_SUFFIX ?=
+LAUNCHPAD_PPA ?= ppa:wpelevator/packages
 
-.PHONY: help image shell packaging-shell nginx-build nginx-build-dynamic nginx-version format test bench bench-quick debian-package debian-package-smoke debian-package-clean
+.PHONY: help image shell packaging-shell nginx-build nginx-build-dynamic nginx-version format test bench bench-quick debian-package debian-package-smoke debian-package-clean debian-import-signing-key debian-source-package debian-source-package-signed launchpad-ppa-upload
 
 help:
 	@printf '%s\n' \
@@ -20,6 +23,9 @@ help:
 		'make test                Run the Test::Nginx suite' \
 		'make debian-package      Build Debian source and binary packages under .pkg-build/' \
 		'make debian-package-smoke Build Debian packages and run debian/tests/smoke' \
+		'make debian-source-package Build unsigned Debian source package under .pkg-build/' \
+		'make debian-source-package-signed Build signed Debian source package under .pkg-build/' \
+		'make launchpad-ppa-upload Build, sign, and upload source package to Launchpad PPA' \
 		'make bench               Run full benchmark suite (60s per scenario)' \
 		'make bench-quick         Run abbreviated benchmark suite (15s per scenario)'
 
@@ -76,13 +82,14 @@ bench-quick: nginx-build
 debian-package-clean:
 	rm -rf "$(DEBIAN_BUILD_ROOT)"
 
-debian-package:
+debian-source-package:
 	package_version="$$(dpkg-parsechangelog -l "$(CURDIR)/debian/changelog" -SVersion)"; \
-	version="$$(printf '%s\n' "$$package_version" | sed 's/-[^-]*$$//')"; \
+	source_version="$${package_version}$(DEBIAN_VERSION_SUFFIX)"; \
+	upstream_version="$$(printf '%s\n' "$$package_version" | sed 's/-[^-]*$$//')"; \
 	source_package="$(DEBIAN_SOURCE_PACKAGE)"; \
 	build_root="$(DEBIAN_BUILD_ROOT)"; \
-	source_dir="$$build_root/$${source_package}-$${version}"; \
-	orig_tarball="$$build_root/$${source_package}_$${version}.orig.tar.gz"; \
+	source_dir="$$build_root/$${source_package}-$${upstream_version}"; \
+	orig_tarball="$$build_root/$${source_package}_$${upstream_version}.orig.tar.gz"; \
 	rm -rf "$$build_root"; \
 	mkdir -p "$$source_dir"; \
 	tar \
@@ -101,11 +108,44 @@ debian-package:
 		--exclude="*.dsc" \
 		--exclude="*.orig.tar.gz" \
 		-cf - . | tar -xf - -C "$$source_dir"; \
-	tar -C "$$build_root" -czf "$$orig_tarball" "$${source_package}-$${version}"; \
-	cd "$$source_dir" && dpkg-buildpackage -S -us -uc; \
+	tar -C "$$build_root" -czf "$$orig_tarball" "$${source_package}-$${upstream_version}"; \
+	if [ "$$source_version" != "$$package_version" ] || [ "$(DEBIAN_DISTRIBUTION)" != "$$(dpkg-parsechangelog -l "$(CURDIR)/debian/changelog" -SDistribution)" ]; then \
+		cd "$$source_dir" && \
+			DEBFULLNAME="$${DEBFULLNAME:-WPElevator Packaging Team}" \
+			DEBEMAIL="$${DEBEMAIL:-hi@wpelevator.com}" \
+			dch --newversion "$$source_version" \
+				--distribution "$(DEBIAN_DISTRIBUTION)" \
+				--force-distribution \
+				"Build for $(DEBIAN_DISTRIBUTION)."; \
+	fi; \
+	cd "$$source_dir" && dpkg-buildpackage -S -sa -us -uc
+
+debian-package: debian-source-package
+	package_version="$$(dpkg-parsechangelog -l "$(CURDIR)/debian/changelog" -SVersion)"; \
+	upstream_version="$$(printf '%s\n' "$$package_version" | sed 's/-[^-]*$$//')"; \
+	source_package="$(DEBIAN_SOURCE_PACKAGE)"; \
+	source_dir="$(DEBIAN_BUILD_ROOT)/$${source_package}-$${upstream_version}"; \
 	cd "$$source_dir" && dpkg-buildpackage -b -us -uc
 
 debian-package-smoke: debian-package
 	apt-get update
 	apt-get install -y --no-install-recommends "$(DEBIAN_BUILD_ROOT)"/libnginx-mod-http-cache-pilot_*_$$(dpkg --print-architecture).deb
 	./debian/tests/smoke
+
+debian-import-signing-key:
+	@signing_key="$${DEBIAN_GPG_PRIVATE_KEY:-$${LAUNCHPAD_GPG_PRIVATE_KEY:-}}"; \
+	if [ -n "$$signing_key" ]; then \
+		printf '%s\n' "$$signing_key" | gpg --batch --import; \
+	fi
+
+debian-source-package-signed: debian-import-signing-key
+	@key_id="$${DEBIAN_GPG_KEY_ID:-$${LAUNCHPAD_GPG_KEY_ID:-}}"; \
+	test -n "$$key_id" || { echo "DEBIAN_GPG_KEY_ID or LAUNCHPAD_GPG_KEY_ID is required"; exit 1; }
+	$(MAKE) debian-source-package
+	key_id="$${DEBIAN_GPG_KEY_ID:-$${LAUNCHPAD_GPG_KEY_ID:-}}"; \
+	changes_file="$$(ls -1 "$(DEBIAN_BUILD_ROOT)"/*_source.changes | tail -n 1)"; \
+	debsign -k"$$key_id" "$$changes_file"
+
+launchpad-ppa-upload: debian-source-package-signed
+	changes_file="$$(ls -1 "$(DEBIAN_BUILD_ROOT)"/*_source.changes | tail -n 1)"; \
+	dput "$(LAUNCHPAD_PPA)" "$$changes_file"
