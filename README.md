@@ -698,7 +698,7 @@ docker compose run --rm packaging make debian-source-package \
   DEBIAN_VERSION_SUFFIX=+ppa1~noble1
 ```
 
-To sign and upload to `ppa:wpelevator/packages`, provide a Launchpad-registered GPG key:
+To sign and upload to `ppa:wpelevator/packages`, provide a Launchpad-registered GPG key id. If `DEBIAN_GPG_PRIVATE_KEY` is set, the signed source-package target imports it before signing; otherwise it uses the container's existing GPG keyring.
 
 ```bash
 docker compose run --rm \
@@ -709,7 +709,7 @@ docker compose run --rm \
     DEBIAN_VERSION_SUFFIX=+ppa1~noble1
 ```
 
-`DEBIAN_GPG_PRIVATE_KEY` is optional for local use when the key is already present in the container user's GPG keyring. In CI, the workflow reads `LAUNCHPAD_GPG_PRIVATE_KEY` as armored private key text and `LAUNCHPAD_GPG_KEY_ID` as the key id; the Make targets accept those names as fallbacks for the generic `DEBIAN_GPG_*` variables.
+In CI, the workflow passes `LAUNCHPAD_GPG_PRIVATE_KEY` as armored private key text and `LAUNCHPAD_GPG_KEY_ID` as the signing key id; the Make targets accept those names as fallbacks for the generic `DEBIAN_GPG_*` variables.
 
 ### GitHub Codespaces
 

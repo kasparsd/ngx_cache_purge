@@ -10,7 +10,7 @@ DEBIAN_DISTRIBUTION ?= noble
 DEBIAN_VERSION_SUFFIX ?=
 LAUNCHPAD_PPA ?= ppa:wpelevator/packages
 
-.PHONY: help image shell packaging-shell nginx-build nginx-build-dynamic nginx-version format test bench bench-quick debian-package debian-package-smoke debian-package-clean debian-import-signing-key debian-source-package debian-source-package-signed launchpad-ppa-upload
+.PHONY: help image shell packaging-shell nginx-build nginx-build-dynamic nginx-version format test bench bench-quick debian-package debian-package-smoke debian-package-clean debian-source-package debian-source-package-signed launchpad-ppa-upload
 
 help:
 	@printf '%s\n' \
@@ -132,13 +132,10 @@ debian-package-smoke: debian-package
 	apt-get install -y --no-install-recommends "$(DEBIAN_BUILD_ROOT)"/libnginx-mod-http-cache-pilot_*_$$(dpkg --print-architecture).deb
 	./debian/tests/smoke
 
-debian-import-signing-key:
-	@signing_key="$${DEBIAN_GPG_PRIVATE_KEY:-$${LAUNCHPAD_GPG_PRIVATE_KEY:-}}"; \
-	if [ -n "$$signing_key" ]; then \
-		printf '%s\n' "$$signing_key" | gpg --batch --import; \
+debian-source-package-signed:
+	@if [ -n "$${DEBIAN_GPG_PRIVATE_KEY:-$${LAUNCHPAD_GPG_PRIVATE_KEY:-}}" ]; then \
+		printf '%s\n' "$${DEBIAN_GPG_PRIVATE_KEY:-$${LAUNCHPAD_GPG_PRIVATE_KEY:-}}" | gpg --batch --import; \
 	fi
-
-debian-source-package-signed: debian-import-signing-key
 	@key_id="$${DEBIAN_GPG_KEY_ID:-$${LAUNCHPAD_GPG_KEY_ID:-}}"; \
 	test -n "$$key_id" || { echo "DEBIAN_GPG_KEY_ID or LAUNCHPAD_GPG_KEY_ID is required"; exit 1; }
 	$(MAKE) debian-source-package
