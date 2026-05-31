@@ -55,6 +55,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
+            build-essential \
             curl \
             debhelper \
             devscripts \
@@ -62,6 +63,14 @@ jobs:
             nginx-core \
             nginx-dev \
             python3
+
+      - name: Create orig tarball
+        run: |
+          version="$(dpkg-parsechangelog -SVersion | sed 's/-[^-]*$//')"
+          git archive --format=tar.gz \
+            --prefix="libnginx-mod-http-cache-pilot-${version}/" \
+            -o "../libnginx-mod-http-cache-pilot_${version}.orig.tar.gz" \
+            HEAD
 
       - name: Build Debian source package
         run: dpkg-buildpackage -S -us -uc

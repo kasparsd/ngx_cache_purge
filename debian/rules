@@ -18,7 +18,7 @@ override_dh_auto_configure:
 		./configure "$${NGX_CONF_FLAGS[@]}" --add-dynamic-module=$(CURDIR)
 
 override_dh_auto_build:
-	$(MAKE) -C $(NGINX_BUILD_DIR) modules
+	$(MAKE) -C $(NGINX_BUILD_DIR) -f objs/Makefile modules
 
 override_dh_auto_install:
 	:
