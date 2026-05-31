@@ -8,7 +8,7 @@ _This module is not distributed with the NGINX source. See [Installation Instruc
 
 ## Status
 
-This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-modules/ngx_cache_purge) to add support for soft purgaging and cache tags (also known as surrogate keys).
+This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-modules/ngx_cache_purge) to add support for soft purging and cache tags (also known as surrogate keys).
 
 Tagged upstream releases are the packaging input. Distribution packages should ship this module as a version-matched dynamic nginx module, not as a standalone binary intended to work across arbitrary nginx builds.
 

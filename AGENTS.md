@@ -6,10 +6,17 @@
 
 ## Verifying changes
 
-- Follow the Development section in [README.md](README.md): use the included development container for development, testing, and manual validation work.
-- When a task requires `make`, run it inside the `dev` container instead.Prefer one of these patterns:
+- Follow the Development section in [README.md](README.md): use the included containers for development, testing, packaging, and manual validation work.
+- For source builds, tests, formatting, benchmarks, and manual nginx validation, run `make` inside the `dev` container. Prefer one of these patterns:
   - `docker compose run --rm dev make <target>` for one-off commands.
   - `make shell` first, then run `make <target>` from inside the container for multi-step interactive work.
+- For Debian packaging work, use the `packaging` container:
+  - `docker compose run --rm packaging make debian-package-smoke`
+  - `docker compose run --rm packaging make debian-source-package ...`
+- In GitHub Codespaces, the `.devcontainer` is already the development environment, so run the usual `make` targets directly instead of nesting `docker compose`.
+- CI validates source builds and benchmarks against nginx `1.26.3`, `1.28.3`, and `1.29.8`. Keep workflow matrices and published dev-image versions in sync when changing supported nginx versions; note that the local Makefile default may differ.
+- CI formatting runs `docker compose run --rm dev make format` and then checks for source diffs. After formatting locally, inspect the diff before closing the task.
+- For performance-sensitive purge or index changes, run `docker compose run --rm dev make bench-quick` when practical.
 - For non-trivial C refactors, check editor diagnostics first, then run containerized tests. Static diagnostics are useful for fast feedback, but they do not reliably catch nginx-version-specific or preprocessor-heavy regressions in this repo.
 
 ## Current ngx_cache_pilot assumptions
@@ -26,9 +33,10 @@
 
 ## Purge semantics
 
-- Same-location `xxx_cache_purge` syntax stores a literal method token in `ngx_http_cache_pilot_conf_t.method`; it is not compiled as a complex value, so variables like `$foo` are not evaluated there.
-- `ngx_http_cache_pilot_access_handler()` only activates purge when the request method exactly matches the configured token and the client address passes the optional `from` CIDR list; otherwise request handling falls through to the original upstream handler.
-- `cache_purge_mode_header` values `soft`, `true`, or `1` only switch soft versus hard purge mode after a purge request has already matched; they do not enable purge conditionally.
+- `fastcgi_cache_purge`, `proxy_cache_purge`, `scgi_cache_purge`, and `uwsgi_cache_purge` accept one or more complex-value conditions followed by optional `soft` and `purge_all` flags.
+- Purge is enabled when at least one configured condition evaluates to a value that is non-empty, not `"0"`, and not `"off"`. Request-method and client-IP restrictions should be expressed with normal nginx mechanisms such as `map`, `allow`, and `deny`.
+- `cache_pilot_purge_mode_header` values `soft`, `true`, or `1` only switch soft versus hard purge mode after a purge request has already matched; they do not enable purge conditionally.
+- `purge_all` uses the configured `soft` flag and does not honor `cache_pilot_purge_mode_header`.
 
 ## README hygiene
 
