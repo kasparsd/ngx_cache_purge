@@ -38,7 +38,7 @@ jobs:
           docker compose version
 
       - name: Build docker image
-        run: docker compose build
+        run: docker compose build dev
 
       - name: Lint code
         run: |
