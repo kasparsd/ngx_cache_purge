@@ -1,6 +1,8 @@
 # ngx_cache_pilot
 
-[![CI](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/ci.yml/badge.svg)](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/ci.yml) [![Bench](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/bench.yml/badge.svg)](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/bench.yml)
+[![CI](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/ci.yml/badge.svg)](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/ci.yml)
+[![Bench](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/bench.yml/badge.svg)](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/bench.yml)
+[![Publish Docker Images](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/publish-docker-images.yml/badge.svg)](https://github.com/wpelevator/ngx_cache_pilot/actions/workflows/publish-docker-images.yml)
 
 `ngx_cache_pilot` is an `nginx` module that adds cache purge support for [`fastcgi_cache`](https://nginx.org/en/docs/http/ngx_http_fastcgi_module.html), [`proxy_cache`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html), [`scgi_cache`](https://nginx.org/en/docs/http/ngx_http_scgi_module.html), and [`uwsgi_cache`](https://nginx.org/en/docs/http/ngx_http_uwsgi_module.html) caches. A purge operation removes or expires cached content that matches the cache key, wildcard key, or configured cache tags for the request.
 
@@ -8,7 +10,7 @@ _This module is not distributed with the NGINX source. See [Installation Instruc
 
 ## Status
 
-This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-modules/ngx_cache_purge) to add support for soft purgaging and cache tags (also known as surrogate keys).
+This is a fork of the [`ngx_cache_purge` module](https://github.com/nginx-modules/ngx_cache_purge) to add support for soft purging and cache tags (also known as surrogate keys).
 
 Tagged upstream releases are the packaging input. Distribution packages should ship this module as a version-matched dynamic nginx module, not as a standalone binary intended to work across arbitrary nginx builds.
 
