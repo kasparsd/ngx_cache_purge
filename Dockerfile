@@ -1,7 +1,9 @@
 FROM debian:bookworm-slim
 
+LABEL org.opencontainers.image.source="https://github.com/wpelevator/ngx_cache_pilot"
+LABEL org.opencontainers.image.description="Debian development environment for ngx_cache_pilot"
+
 ARG NGINX_VERSION=1.25.5
-ARG TEST_NGINX_REPO=https://github.com/openresty/test-nginx.git
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV NGINX_VERSION=${NGINX_VERSION}
@@ -30,6 +32,9 @@ RUN mkdir -p /opt/nginx-src \
     && tar -xzf /tmp/nginx.tar.gz -C /opt/nginx-src \
     && rm /tmp/nginx.tar.gz
 
+RUN git clone --depth=1 --branch v0.32 https://github.com/openresty/test-nginx.git /opt/test-nginx \
+    && cpanm --notest /opt/test-nginx
+
 RUN cd "${NGINX_SRC_DIR}" \
     && ./configure \
         --prefix="${NGINX_BUILD_PREFIX}" \
@@ -39,9 +44,6 @@ RUN cd "${NGINX_SRC_DIR}" \
         --with-threads \
     && make -j"$(nproc)" \
     && make install
-
-RUN git clone --depth=1 "${TEST_NGINX_REPO}" /opt/test-nginx \
-    && cpanm --notest /opt/test-nginx
 
 WORKDIR /workspace
 

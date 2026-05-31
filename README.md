@@ -680,9 +680,11 @@ make nginx-version
 Use the packaging container when you want to build and smoke-test the Debian package locally without installing packaging dependencies on the host:
 
 ```bash
-docker compose build packaging
+docker compose pull packaging
 docker compose run --rm packaging make debian-package-smoke
 ```
+
+The packaging container is published as the public GitHub Container Registry image `ghcr.io/wpelevator/ngx-cache-pilot--packaging`. Versioned development containers are published as `ghcr.io/wpelevator/ngx-cache-pilot--dev:<nginx-version>` for the NGINX versions validated in CI. Local `docker compose build dev` and `docker compose build packaging` still rebuild the images when you need to test container changes.
 
 The same packaging container can also prepare Launchpad PPA source uploads. Launchpad accepts signed source packages and builds the published `.deb` packages in the PPA; local binary `.deb` builds remain available through `make debian-package` and `make debian-package-smoke`.
 
@@ -741,6 +743,8 @@ PPA uploads append an Ubuntu-series suffix to the Debian package version in a te
 
 When `DEBIAN_DISTRIBUTION` is not set, source package builds preserve the distribution from `debian/changelog`. Set `DEBIAN_DISTRIBUTION` only when building for a specific target series such as a Launchpad PPA upload.
 
+The `debian-orig-tarball` target generates the upstream `.orig.tar.gz` once. The PPA workflow uploads that tarball as an artifact and restores it before each Ubuntu series upload, so all series share the same upstream tarball and Launchpad does not reject a second series because the same tarball filename has different contents.
+
 The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy` and `noble` source uploads to `ppa:wpelevator/packages`. It requires these repository secrets:
 
 - `LAUNCHPAD_GPG_KEY_ID`
@@ -749,9 +753,10 @@ The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy` and `noble
 Before tagging a release, run the usual validation flow from this repository:
 
 ```bash
-docker compose build
+docker compose build dev
 docker compose run --rm dev make format
 docker compose run --rm dev make test
+docker compose pull packaging
 docker compose run --rm packaging make debian-package-smoke
 docker compose run --rm packaging make debian-source-package DEBIAN_DISTRIBUTION=jammy DEBIAN_VERSION_SUFFIX=+ppa1~jammy1
 docker compose run --rm packaging make debian-source-package DEBIAN_DISTRIBUTION=noble DEBIAN_VERSION_SUFFIX=+ppa1~noble1
