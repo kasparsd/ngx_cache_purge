@@ -18,6 +18,7 @@ permissions:
 
 jobs:
   source-tarball:
+    name: Build source tarball
     runs-on: ubuntu-24.04
 
     steps:
@@ -34,6 +35,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: launchpad-orig-tarball
+          include-hidden-files: true
           path: .pkg-build/libnginx-mod-http-cache-pilot_*.orig.tar.gz
           if-no-files-found: error
 
@@ -81,13 +83,13 @@ jobs:
 
       - name: Upload source package artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: launchpad-source-${{ matrix.series }}
+          if-no-files-found: error
           include-hidden-files: true
           path: |
             .pkg-build/libnginx-mod-http-cache-pilot_*.buildinfo
             .pkg-build/libnginx-mod-http-cache-pilot_*.changes
             .pkg-build/libnginx-mod-http-cache-pilot_*.dsc
             .pkg-build/libnginx-mod-http-cache-pilot_*.tar.*
-          if-no-files-found: error

@@ -39,12 +39,12 @@ jobs:
         run: docker compose run --rm dev make bench-quick
 
       - name: Upload benchmark artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-results-nginx-${{ matrix.nginx_version }}
+          if-no-files-found: error
           path: |
             bench/results/latest/summary.json
             bench/results/latest/summary.txt
             bench/results/latest/*.json
             bench/results/latest/*.log
-          if-no-files-found: error
