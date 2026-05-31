@@ -79,6 +79,7 @@ debian-package-clean:
 debian-package:
 	package_version="$$(dpkg-parsechangelog -l "$(CURDIR)/debian/changelog" -SVersion)"; \
 	version="$$(printf '%s\n' "$$package_version" | sed 's/-[^-]*$$//')"; \
+	source_package="$(DEBIAN_SOURCE_PACKAGE)"; \
 	build_root="$(DEBIAN_BUILD_ROOT)"; \
 	source_dir="$$build_root/$${source_package}-$${version}"; \
 	orig_tarball="$$build_root/$${source_package}_$${version}.orig.tar.gz"; \
