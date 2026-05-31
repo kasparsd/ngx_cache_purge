@@ -54,6 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Keep these in sync with CI and bench workflow configuration.
         nginx_version:
           - "1.26.3"
           - "1.28.3"
