@@ -1,3 +1,4 @@
+.pkg-build/
 bench/results/*/
 debian/build/
 debian/files

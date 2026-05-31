@@ -662,6 +662,7 @@ Use this section if you are hacking on the module, running the automated test su
 The repository includes a containerized build environment with:
 
 - Debian-based build tooling for NGINX modules
+- a separate Debian packaging container with `nginx-dev`, `nginx-core`, and Debian package build tools
 - downloaded NGINX source in `/opt/nginx-src/nginx-$NGINX_VERSION`
 - prebuilt default NGINX binary at `/opt/nginx/sbin/nginx`
 - `Test::Nginx` installed from `openresty/test-nginx`
@@ -674,6 +675,13 @@ Use the included container for development, testing, and manual validation. It i
 make shell
 make nginx-build
 make nginx-version
+```
+
+Use the packaging container when you want to build and smoke-test the Debian package locally without installing packaging dependencies on the host:
+
+```bash
+docker compose build packaging
+docker compose run --rm packaging make debian-package-smoke
 ```
 
 ### GitHub Codespaces

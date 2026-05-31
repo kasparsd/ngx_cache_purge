@@ -54,48 +54,25 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install packaging dependencies
+      - name: Show Docker versions
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            curl \
-            debhelper \
-            devscripts \
-            fakeroot \
-            nginx-core \
-            nginx-dev \
-            python3
+          docker --version
+          docker compose version
 
-      - name: Create orig tarball
-        run: |
-          version="$(dpkg-parsechangelog -SVersion | sed 's/-[^-]*$//')"
-          git archive --format=tar.gz \
-            --prefix="libnginx-mod-http-cache-pilot-${version}/" \
-            -o "../libnginx-mod-http-cache-pilot_${version}.orig.tar.gz" \
-            HEAD
+      - name: Build packaging image
+        run: docker compose build packaging
 
-      - name: Build Debian source package
-        run: dpkg-buildpackage -S -us -uc
-
-      - name: Build Debian binary package
-        run: dpkg-buildpackage -b -us -uc
-
-      - name: Install built module package
-        run: |
-          sudo apt-get install -y ../libnginx-mod-http-cache-pilot_*_$(dpkg --print-architecture).deb
-
-      - name: Run package smoke test
-        run: sudo ./debian/tests/smoke
+      - name: Build Debian package and run smoke test
+        run: docker compose run --rm packaging make debian-package-smoke
 
       - name: Upload Debian package artifacts
         uses: actions/upload-artifact@v4
         with:
           name: debian-package-artifacts
           path: |
-            ../libnginx-mod-http-cache-pilot_*.buildinfo
-            ../libnginx-mod-http-cache-pilot_*.changes
-            ../libnginx-mod-http-cache-pilot_*.deb
-            ../libnginx-mod-http-cache-pilot_*.dsc
-            ../libnginx-mod-http-cache-pilot_*.tar.*
+            .pkg-build/libnginx-mod-http-cache-pilot_*.buildinfo
+            .pkg-build/libnginx-mod-http-cache-pilot_*.changes
+            .pkg-build/libnginx-mod-http-cache-pilot_*.deb
+            .pkg-build/libnginx-mod-http-cache-pilot_*.dsc
+            .pkg-build/libnginx-mod-http-cache-pilot_*.tar.*
           if-no-files-found: error
