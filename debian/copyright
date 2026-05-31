@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: ngx_cache_pilot
-Upstream-Contact: WPElevator Packaging Team <packages@wpelevator.com>
+Upstream-Contact: WPElevator Packaging Team <hi@wpelevator.com>
 Source: https://github.com/wpelevator/ngx_cache_pilot
 
 Files: *

@@ -1,7 +1,7 @@
 Source: libnginx-mod-http-cache-pilot
 Section: httpd
 Priority: optional
-Maintainer: WPElevator Packaging Team <packages@wpelevator.com>
+Maintainer: WPElevator Packaging Team <hi@wpelevator.com>
 Build-Depends:
  debhelper-compat (= 13),
  nginx-dev
