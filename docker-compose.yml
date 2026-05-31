@@ -12,7 +12,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.packaging
-    image: ngx-cache-pilot-packaging:bookworm
     working_dir: /workspace
     volumes:
       - .:/workspace
