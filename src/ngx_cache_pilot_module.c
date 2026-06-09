@@ -62,6 +62,8 @@ typedef struct ngx_http_cache_pilot_partial_ctx_s
     ngx_http_cache_pilot_partial_ctx_t;
 typedef struct ngx_http_cache_pilot_protocol_s
     ngx_http_cache_pilot_protocol_t;
+typedef struct ngx_http_cache_pilot_index_purge_ctx_s
+    ngx_http_cache_pilot_index_purge_ctx_t;
 
 static ngx_http_cache_pilot_request_ctx_t *
 ngx_http_cache_pilot_get_request_ctx(ngx_http_request_t *r);
@@ -139,12 +141,11 @@ static ngx_int_t
 ngx_http_cache_pilot_soft_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
                                ngx_log_t *log);
 static ngx_int_t
-ngx_http_cache_pilot_delete_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
-                                 ngx_http_file_cache_node_t *known_node,
-                                 ngx_flag_t require_existing_node,
-                                 ngx_flag_t stat_first,
-                                 ngx_flag_t ignore_delete_error,
-                                 ngx_log_t *log);
+ngx_http_cache_pilot_delete_cache_file(ngx_http_file_cache_t *cache,
+                                       ngx_str_t *path, ngx_log_t *log);
+static ngx_int_t
+ngx_http_cache_pilot_delete_opened_file(ngx_http_file_cache_t *cache,
+                                        ngx_http_cache_t *c, ngx_log_t *log);
 static void
 ngx_http_cache_pilot_mark_node_deleted(ngx_http_file_cache_t *cache,
                                        ngx_http_file_cache_node_t *node);
@@ -164,15 +165,11 @@ ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
                                      ngx_http_cache_index_zone_t **tag_zone,
                                      ngx_http_cache_index_store_t **reader);
 static ngx_int_t
-ngx_http_cache_pilot_by_indexed_path(ngx_http_file_cache_t *cache,
-                                     ngx_str_t *path, ngx_flag_t soft,
-                                     ngx_http_cache_index_zone_t *zone,
-                                     ngx_http_cache_index_store_t *reader,
-                                     ngx_log_t *log);
+ngx_http_cache_pilot_by_indexed_path(ngx_http_cache_pilot_index_purge_ctx_t *ctx,
+                                     ngx_str_t *path, ngx_flag_t soft);
 static void
-ngx_http_cache_pilot_delete_index_path(ngx_http_cache_index_store_t *reader,
-                                       ngx_http_cache_index_zone_t *zone,
-                                       ngx_str_t *path, ngx_log_t *log);
+ngx_http_cache_pilot_delete_index_path(
+    ngx_http_cache_pilot_index_purge_ctx_t *ctx, ngx_str_t *path);
 static size_t
 ngx_http_cache_pilot_json_escaped_len(ngx_str_t *value);
 static u_char *
@@ -1598,6 +1595,13 @@ struct ngx_http_cache_pilot_partial_ctx_s {
     ngx_uint_t purged;
 };
 
+struct ngx_http_cache_pilot_index_purge_ctx_s {
+    ngx_http_file_cache_t          *cache;
+    ngx_http_cache_index_zone_t    *zone;
+    ngx_http_cache_index_store_t   *reader;
+    ngx_log_t                      *log;
+};
+
 static ngx_int_t
 ngx_http_cache_pilot_file_cache_delete_file(ngx_tree_ctx_t *ctx,
         ngx_str_t *path) {
@@ -2483,48 +2487,28 @@ ngx_http_cache_pilot_mark_node_deleted(ngx_http_file_cache_t *cache,
 }
 
 static ngx_int_t
-ngx_http_cache_pilot_delete_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
-                                 ngx_http_file_cache_node_t *known_node,
-                                 ngx_flag_t require_existing_node,
-                                 ngx_flag_t stat_first,
-                                 ngx_flag_t ignore_delete_error,
-                                 ngx_log_t *log) {
+ngx_http_cache_pilot_delete_cache_file(ngx_http_file_cache_t *cache,
+                                       ngx_str_t *path, ngx_log_t *log) {
     ngx_http_file_cache_node_t  *node;
     ngx_file_info_t              fi;
     u_char                       key[NGX_HTTP_CACHE_KEY_LEN];
 
-    if (stat_first && ngx_file_info(path->data, &fi) == NGX_FILE_ERROR) {
+    if (ngx_file_info(path->data, &fi) == NGX_FILE_ERROR) {
         return ngx_errno == NGX_ENOENT ? NGX_DECLINED : NGX_ERROR;
     }
 
-    node = known_node;
-
-    if (node != NULL || ngx_http_cache_pilot_filename_key(path, key) == NGX_OK) {
+    if (ngx_http_cache_pilot_filename_key(path, key) == NGX_OK) {
         ngx_shmtx_lock(&cache->shpool->mutex);
 
-        if (node == NULL) {
-            node = ngx_http_cache_pilot_lookup(cache, key);
-        }
-
+        node = ngx_http_cache_pilot_lookup(cache, key);
         if (node != NULL && node->exists) {
             ngx_http_cache_pilot_mark_node_deleted(cache, node);
-        } else if (require_existing_node) {
-            ngx_shmtx_unlock(&cache->shpool->mutex);
-            return NGX_DECLINED;
         }
 
         ngx_shmtx_unlock(&cache->shpool->mutex);
-    } else if (require_existing_node) {
-        return NGX_DECLINED;
     }
 
     if (ngx_delete_file(path->data) == NGX_FILE_ERROR) {
-        if (ignore_delete_error) {
-            ngx_log_error(NGX_LOG_CRIT, log, ngx_errno,
-                          ngx_delete_file_n " \"%s\" failed", path->data);
-            return NGX_OK;
-        }
-
         if (ngx_errno == NGX_ENOENT) {
             return NGX_DECLINED;
         }
@@ -2537,6 +2521,28 @@ ngx_http_cache_pilot_delete_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
     return NGX_OK;
 }
 
+static ngx_int_t
+ngx_http_cache_pilot_delete_opened_file(ngx_http_file_cache_t *cache,
+                                        ngx_http_cache_t *c, ngx_log_t *log) {
+    ngx_shmtx_lock(&cache->shpool->mutex);
+
+    if (!c->node->exists) {
+        ngx_shmtx_unlock(&cache->shpool->mutex);
+        return NGX_DECLINED;
+    }
+
+    ngx_http_cache_pilot_mark_node_deleted(cache, c->node);
+
+    ngx_shmtx_unlock(&cache->shpool->mutex);
+
+    if (ngx_delete_file(c->file.name.data) == NGX_FILE_ERROR) {
+        ngx_log_error(NGX_LOG_CRIT, log, ngx_errno,
+                      ngx_delete_file_n " \"%s\" failed", c->file.name.data);
+    }
+
+    return NGX_OK;
+}
+
 ngx_int_t
 ngx_http_cache_pilot_by_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
                              ngx_flag_t soft, ngx_log_t *log) {
@@ -2544,43 +2550,38 @@ ngx_http_cache_pilot_by_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
         return ngx_http_cache_pilot_soft_path(cache, path, log);
     }
 
-    return ngx_http_cache_pilot_delete_path(cache, path, NULL, 0, 1, 0, log);
+    return ngx_http_cache_pilot_delete_cache_file(cache, path, log);
 }
 
 static void
-ngx_http_cache_pilot_delete_index_path(ngx_http_cache_index_store_t *reader,
-                                       ngx_http_cache_index_zone_t *zone,
-                                       ngx_str_t *path, ngx_log_t *log) {
+ngx_http_cache_pilot_delete_index_path(
+    ngx_http_cache_pilot_index_purge_ctx_t *ctx, ngx_str_t *path) {
 #if (NGX_LINUX)
-    if (reader == NULL || zone == NULL) {
+    if (ctx == NULL || ctx->reader == NULL || ctx->zone == NULL) {
         return;
     }
 
-    if (ngx_http_cache_index_store_delete_file(reader, &zone->zone_name, path, log)
+    if (ngx_http_cache_index_store_delete_file(ctx->reader, &ctx->zone->zone_name,
+            path, ctx->log)
             != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, log, 0,
+        ngx_log_error(NGX_LOG_ERR, ctx->log, 0,
                       "cache_tag purge continuing after shm index delete failure");
     }
 #else
-    (void) reader;
-    (void) zone;
+    (void) ctx;
     (void) path;
-    (void) log;
 #endif
 }
 
 static ngx_int_t
-ngx_http_cache_pilot_by_indexed_path(ngx_http_file_cache_t *cache,
-                                     ngx_str_t *path, ngx_flag_t soft,
-                                     ngx_http_cache_index_zone_t *zone,
-                                     ngx_http_cache_index_store_t *reader,
-                                     ngx_log_t *log) {
+ngx_http_cache_pilot_by_indexed_path(ngx_http_cache_pilot_index_purge_ctx_t *ctx,
+                                     ngx_str_t *path, ngx_flag_t soft) {
     ngx_int_t  rc;
 
-    rc = ngx_http_cache_pilot_by_path(cache, path, soft, log);
+    rc = ngx_http_cache_pilot_by_path(ctx->cache, path, soft, ctx->log);
 
     if (!soft && (rc == NGX_OK || rc == NGX_DECLINED)) {
-        ngx_http_cache_pilot_delete_index_path(reader, zone, path, log);
+        ngx_http_cache_pilot_delete_index_path(ctx, path);
     }
 
     return rc;
@@ -2856,8 +2857,7 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
     c = r->cache;
     cache = c->file_cache;
 
-    if (ngx_http_cache_pilot_delete_path(cache, &c->file.name, c->node, 1, 0, 1,
-                                         r->connection->log)
+    if (ngx_http_cache_pilot_delete_opened_file(cache, c, r->connection->log)
             == NGX_DECLINED) {
         return NGX_DECLINED;
     }
@@ -2865,19 +2865,22 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
     /* file deleted from cache */
     {
         ngx_http_cache_pilot_main_conf_t *pmcf_m;
+        ngx_http_cache_pilot_index_purge_ctx_t index_ctx;
         ngx_int_t                         fanout_used;
         ngx_uint_t                        purged_count;
-        ngx_http_cache_index_zone_t       *tag_zone;
-        ngx_http_cache_index_store_t      *reader;
 
         ngx_http_cache_pilot_record_purge_request(
             r, NGX_HTTP_CACHE_PILOT_PURGE_STATS_EXACT, 0);
         fanout_used = 0;
         purged_count = 1;
+        index_ctx.cache = cache;
+        index_ctx.zone = NULL;
+        index_ctx.reader = NULL;
+        index_ctx.log = r->connection->log;
 
         /* Key-index fan-out: purge Vary variants sharing the same cache key. */
         if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_m,
-                &tag_zone, &reader) == NGX_OK) {
+                &index_ctx.zone, &index_ctx.reader) == NGX_OK) {
             ngx_str_t   *kv, key_text;
             ngx_str_t   *fp;
             ngx_array_t *fan_paths;
@@ -2887,22 +2890,17 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
             kv = c->keys.elts;
             if (c->keys.nelts > 0) {
                 key_text = kv[0];
-                ngx_http_cache_pilot_delete_index_path(reader, tag_zone,
-                                                       &c->file.name,
-                                                       r->connection->log);
+                ngx_http_cache_pilot_delete_index_path(&index_ctx, &c->file.name);
                 fan_paths = NULL;
                 if (ngx_http_cache_index_store_collect_paths_by_exact_key(
-                            reader, r->pool, &tag_zone->zone_name, &key_text,
-                            &fan_paths, r->connection->log) == NGX_OK
+                            index_ctx.reader, r->pool, &index_ctx.zone->zone_name,
+                            &key_text, &fan_paths, r->connection->log) == NGX_OK
                         && fan_paths != NULL && fan_paths->nelts > 0) {
                     fp = fan_paths->elts;
                     for (ki = 0; ki < fan_paths->nelts; ki++) {
-                        purge_rc = ngx_http_cache_pilot_by_indexed_path(cache,
+                        purge_rc = ngx_http_cache_pilot_by_indexed_path(&index_ctx,
                                    &fp[ki],
-                                   0,
-                                   tag_zone,
-                                   reader,
-                                   r->connection->log);
+                                   0);
                         if (purge_rc == NGX_OK) {
                             fanout_used = 1;
                             purged_count++;
@@ -3191,8 +3189,7 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
     ngx_int_t                            soft;
     ngx_tree_ctx_t                       tree;
     ngx_http_cache_pilot_main_conf_t    *pmcf_idx;
-    ngx_http_cache_index_zone_t           *tag_zone;
-    ngx_http_cache_index_store_t          *reader;
+    ngx_http_cache_pilot_index_purge_ctx_t index_ctx;
     ngx_array_t                         *idx_paths;
     ngx_int_t                            purge_rc;
     ngx_uint_t                           purged_count;
@@ -3257,29 +3254,30 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
 
     cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
     soft = ngx_http_cache_pilot_request_mode(r, cplcf->conf->soft);
+    index_ctx.cache = cache;
+    index_ctx.zone = NULL;
+    index_ctx.reader = NULL;
+    index_ctx.log = r->connection->log;
 
     /* Index-first path: use key-prefix index to avoid filesystem walk. */
     used_index = 0;
     purged_count = 0;
     if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_idx,
-            &tag_zone, &reader) == NGX_OK) {
+            &index_ctx.zone, &index_ctx.reader) == NGX_OK) {
         idx_paths = NULL;
-        if (ngx_http_cache_index_store_collect_paths_by_key_prefix(reader,
-                r->pool, &tag_zone->zone_name, &key_prefix,
+        if (ngx_http_cache_index_store_collect_paths_by_key_prefix(index_ctx.reader,
+                r->pool, &index_ctx.zone->zone_name, &key_prefix,
                 &idx_paths, r->connection->log) == NGX_OK
                 && idx_paths != NULL && idx_paths->nelts > 0) {
             ngx_str_t *ip = idx_paths->elts;
 
             ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                            "cache_tag wildcard index candidate zone:\"%V\" prefix:\"%V\" matches:%ui",
-                           &tag_zone->zone_name, &key_prefix, idx_paths->nelts);
+                           &index_ctx.zone->zone_name, &key_prefix, idx_paths->nelts);
 
             for (k = 0; k < idx_paths->nelts; k++) {
-                purge_rc = ngx_http_cache_pilot_by_indexed_path(cache, &ip[k],
-                           soft,
-                           tag_zone,
-                           reader,
-                           r->connection->log);
+                purge_rc = ngx_http_cache_pilot_by_indexed_path(&index_ctx, &ip[k],
+                           soft);
                 if (purge_rc == NGX_OK) {
                     used_index = 1;
                     purged_count++;
@@ -3293,7 +3291,7 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
         } else {
             ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                            "cache_tag wildcard index empty zone:\"%V\" prefix:\"%V\"",
-                           &tag_zone->zone_name, &key_prefix);
+                           &index_ctx.zone->zone_name, &key_prefix);
         }
     }
 
