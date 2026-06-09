@@ -138,6 +138,16 @@ ngx_http_cache_pilot_file_cache_soft_partial_file(ngx_tree_ctx_t *ctx,
 static ngx_int_t
 ngx_http_cache_pilot_soft_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
                                ngx_log_t *log);
+static ngx_int_t
+ngx_http_cache_pilot_delete_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
+                                 ngx_http_file_cache_node_t *known_node,
+                                 ngx_flag_t require_existing_node,
+                                 ngx_flag_t stat_first,
+                                 ngx_flag_t ignore_delete_error,
+                                 ngx_log_t *log);
+static void
+ngx_http_cache_pilot_mark_node_deleted(ngx_http_file_cache_t *cache,
+                                       ngx_http_file_cache_node_t *node);
 static void
 ngx_http_cache_pilot_release_updating(ngx_http_cache_t *c);
 static ngx_http_file_cache_node_t *
@@ -153,6 +163,20 @@ ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
                                      ngx_http_cache_pilot_main_conf_t **pmcf,
                                      ngx_http_cache_index_zone_t **tag_zone,
                                      ngx_http_cache_index_store_t **reader);
+static ngx_int_t
+ngx_http_cache_pilot_by_indexed_path(ngx_http_file_cache_t *cache,
+                                     ngx_str_t *path, ngx_flag_t soft,
+                                     ngx_http_cache_index_zone_t *zone,
+                                     ngx_http_cache_index_store_t *reader,
+                                     ngx_log_t *log);
+static void
+ngx_http_cache_pilot_delete_index_path(ngx_http_cache_index_store_t *reader,
+                                       ngx_http_cache_index_zone_t *zone,
+                                       ngx_str_t *path, ngx_log_t *log);
+static size_t
+ngx_http_cache_pilot_json_escaped_len(ngx_str_t *value);
+static u_char *
+ngx_http_cache_pilot_json_escape(u_char *dst, ngx_str_t *value);
 static ngx_http_cache_pilot_metrics_shctx_t *
 ngx_http_cache_pilot_metrics_ctx(ngx_http_cache_pilot_main_conf_t *pmcf);
 #if (NGX_CACHE_PILOT_THREADS)
@@ -1578,21 +1602,19 @@ static ngx_int_t
 ngx_http_cache_pilot_file_cache_delete_file(ngx_tree_ctx_t *ctx,
         ngx_str_t *path) {
     ngx_http_cache_pilot_partial_ctx_t *data;
+    ngx_int_t                           rc;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ctx->log, 0,
                    "http file cache delete: \"%s\"", path->data);
 
     data = ctx->data;
 
-    if (ngx_delete_file(path->data) == NGX_FILE_ERROR) {
-        ngx_log_error(NGX_LOG_CRIT, ctx->log, ngx_errno,
-                      ngx_delete_file_n " \"%s\" failed", path->data);
-        return NGX_ERROR;
+    rc = ngx_http_cache_pilot_by_path(data->cache, path, 0, ctx->log);
+    if (rc == NGX_OK) {
+        data->purged++;
     }
 
-    data->purged++;
-
-    return NGX_OK;
+    return rc == NGX_DECLINED ? NGX_OK : rc;
 }
 
 
@@ -1609,6 +1631,7 @@ static ngx_int_t
 ngx_http_cache_pilot_file_cache_delete_partial_file(ngx_tree_ctx_t *ctx,
         ngx_str_t *path) {
     ngx_http_cache_pilot_partial_ctx_t *data;
+    ngx_int_t                           rc;
 
     data = ctx->data;
 
@@ -1616,13 +1639,10 @@ ngx_http_cache_pilot_file_cache_delete_partial_file(ngx_tree_ctx_t *ctx,
         return NGX_OK;
     }
 
-    if (ngx_delete_file(path->data) == NGX_FILE_ERROR) {
-        ngx_log_error(NGX_LOG_CRIT, ctx->log, ngx_errno,
-                      ngx_delete_file_n " \"%s\" failed", path->data);
-        return NGX_OK;
+    rc = ngx_http_cache_pilot_by_path(data->cache, path, 0, ctx->log);
+    if (rc == NGX_OK) {
+        data->purged++;
     }
-
-    data->purged++;
 
     return NGX_OK;
 }
@@ -2055,6 +2075,7 @@ ngx_http_cache_pilot_send_response(ngx_http_request_t *r) {
     ngx_chain_t   out;
     ngx_buf_t    *b;
     ngx_http_cache_pilot_request_ctx_t  *ctx;
+    ngx_str_t     escaped_key;
     ngx_str_t     purge_path;
     ngx_str_t    *key;
     ngx_int_t     rc;
@@ -2075,13 +2096,8 @@ ngx_http_cache_pilot_send_response(ngx_http_request_t *r) {
     key = r->cache->keys.elts;
     ctx = ngx_http_cache_pilot_get_request_ctx(r);
     purge_path = ngx_http_cache_pilot_response_path_value(r);
-
-    buf_keydata = ngx_pcalloc(r->pool, key[0].len + 1);
-    if (buf_keydata == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    (void) ngx_cpymem(buf_keydata, key[0].data, key[0].len);
+    escaped_key.len = key[0].len;
+    escaped_key.data = key[0].data;
 
     switch (cplcf->resptype) {
 
@@ -2101,10 +2117,32 @@ ngx_http_cache_pilot_send_response(ngx_http_request_t *r) {
         break;
     }
 
+    if (cplcf->resptype == NGX_RESPONSE_TYPE_TEXT) {
+        len = key[0].len;
+    } else {
+        len = ngx_http_cache_pilot_json_escaped_len(&key[0]);
+    }
+
+    buf_keydata = ngx_pcalloc(r->pool, len + 1);
+    if (buf_keydata == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    if (cplcf->resptype == NGX_RESPONSE_TYPE_TEXT) {
+        (void) ngx_cpymem(buf_keydata, key[0].data, key[0].len);
+    } else {
+        escaped_key.data = buf_keydata;
+        escaped_key.len = ngx_http_cache_pilot_json_escape(buf_keydata, &key[0])
+                          - buf_keydata;
+    }
+
     r->headers_out.content_type.len = resp_ct_size - 1;
     r->headers_out.content_type.data = (u_char *) resp_ct;
 
-    len = ngx_http_cache_pilot_body_templ_text_size + key[0].len + purge_path.len
+    len = ngx_http_cache_pilot_body_templ_text_size
+          + (cplcf->resptype == NGX_RESPONSE_TYPE_TEXT ? key[0].len
+             : escaped_key.len)
+          + purge_path.len
           + 256;
     buf = ngx_pcalloc(r->pool, len + 1);
     if (buf == NULL) {
@@ -2329,6 +2367,58 @@ ngx_http_cache_pilot_record_key_index_wildcard_hit(ngx_http_request_t *r) {
     NGX_CACHE_PILOT_METRICS_INC(metrics, key_index_wildcard_hits);
 }
 
+static size_t
+ngx_http_cache_pilot_json_escaped_len(ngx_str_t *value) {
+    size_t      len;
+    ngx_uint_t  i;
+
+    len = value->len;
+
+    for (i = 0; i < value->len; i++) {
+        if (value->data[i] == '"' || value->data[i] == '\\') {
+            len++;
+            continue;
+        }
+
+        if (value->data[i] < 0x20) {
+            len += 5;
+        }
+    }
+
+    return len;
+}
+
+static u_char *
+ngx_http_cache_pilot_json_escape(u_char *dst, ngx_str_t *value) {
+    static u_char  hex[] = "0123456789abcdef";
+    ngx_uint_t     i;
+    u_char         ch;
+
+    for (i = 0; i < value->len; i++) {
+        ch = value->data[i];
+
+        if (ch == '"' || ch == '\\') {
+            *dst++ = '\\';
+            *dst++ = ch;
+            continue;
+        }
+
+        if (ch < 0x20) {
+            *dst++ = '\\';
+            *dst++ = 'u';
+            *dst++ = '0';
+            *dst++ = '0';
+            *dst++ = hex[ch >> 4];
+            *dst++ = hex[ch & 0x0f];
+            continue;
+        }
+
+        *dst++ = ch;
+    }
+
+    return dst;
+}
+
 static ngx_http_cache_pilot_request_ctx_t *
 ngx_http_cache_pilot_get_request_ctx(ngx_http_request_t *r) {
     ngx_http_cache_pilot_request_ctx_t  *ctx;
@@ -2375,44 +2465,66 @@ ngx_http_cache_pilot_response_path_value(ngx_http_request_t *r) {
     return values[ctx->purge_path];
 }
 
-ngx_int_t
-ngx_http_cache_pilot_by_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
-                             ngx_flag_t soft, ngx_log_t *log) {
+static void
+ngx_http_cache_pilot_mark_node_deleted(ngx_http_file_cache_t *cache,
+                                       ngx_http_file_cache_node_t *node) {
+#  if (nginx_version >= 1000001)
+    cache->sh->size -= node->fs_size;
+    node->fs_size = 0;
+#  else
+    cache->sh->size -= (node->length + cache->bsize - 1) / cache->bsize;
+    node->length = 0;
+#  endif
+    node->exists = 0;
+#  if (nginx_version >= 8001) \
+       || ((nginx_version < 8000) && (nginx_version >= 7060))
+    node->updating = 0;
+#  endif
+}
+
+static ngx_int_t
+ngx_http_cache_pilot_delete_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
+                                 ngx_http_file_cache_node_t *known_node,
+                                 ngx_flag_t require_existing_node,
+                                 ngx_flag_t stat_first,
+                                 ngx_flag_t ignore_delete_error,
+                                 ngx_log_t *log) {
     ngx_http_file_cache_node_t  *node;
     ngx_file_info_t              fi;
     u_char                       key[NGX_HTTP_CACHE_KEY_LEN];
 
-    if (soft) {
-        return ngx_http_cache_pilot_soft_path(cache, path, log);
-    }
-
-    if (ngx_file_info(path->data, &fi) == NGX_FILE_ERROR) {
+    if (stat_first && ngx_file_info(path->data, &fi) == NGX_FILE_ERROR) {
         return ngx_errno == NGX_ENOENT ? NGX_DECLINED : NGX_ERROR;
     }
 
-    if (ngx_http_cache_pilot_filename_key(path, key) == NGX_OK) {
+    node = known_node;
+
+    if (node != NULL || ngx_http_cache_pilot_filename_key(path, key) == NGX_OK) {
         ngx_shmtx_lock(&cache->shpool->mutex);
 
-        node = ngx_http_cache_pilot_lookup(cache, key);
+        if (node == NULL) {
+            node = ngx_http_cache_pilot_lookup(cache, key);
+        }
+
         if (node != NULL && node->exists) {
-#  if (nginx_version >= 1000001)
-            cache->sh->size -= node->fs_size;
-            node->fs_size = 0;
-#  else
-            cache->sh->size -= (node->length + cache->bsize - 1) / cache->bsize;
-            node->length = 0;
-#  endif
-            node->exists = 0;
-#  if (nginx_version >= 8001) \
-       || ((nginx_version < 8000) && (nginx_version >= 7060))
-            node->updating = 0;
-#  endif
+            ngx_http_cache_pilot_mark_node_deleted(cache, node);
+        } else if (require_existing_node) {
+            ngx_shmtx_unlock(&cache->shpool->mutex);
+            return NGX_DECLINED;
         }
 
         ngx_shmtx_unlock(&cache->shpool->mutex);
+    } else if (require_existing_node) {
+        return NGX_DECLINED;
     }
 
     if (ngx_delete_file(path->data) == NGX_FILE_ERROR) {
+        if (ignore_delete_error) {
+            ngx_log_error(NGX_LOG_CRIT, log, ngx_errno,
+                          ngx_delete_file_n " \"%s\" failed", path->data);
+            return NGX_OK;
+        }
+
         if (ngx_errno == NGX_ENOENT) {
             return NGX_DECLINED;
         }
@@ -2423,6 +2535,55 @@ ngx_http_cache_pilot_by_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
     }
 
     return NGX_OK;
+}
+
+ngx_int_t
+ngx_http_cache_pilot_by_path(ngx_http_file_cache_t *cache, ngx_str_t *path,
+                             ngx_flag_t soft, ngx_log_t *log) {
+    if (soft) {
+        return ngx_http_cache_pilot_soft_path(cache, path, log);
+    }
+
+    return ngx_http_cache_pilot_delete_path(cache, path, NULL, 0, 1, 0, log);
+}
+
+static void
+ngx_http_cache_pilot_delete_index_path(ngx_http_cache_index_store_t *reader,
+                                       ngx_http_cache_index_zone_t *zone,
+                                       ngx_str_t *path, ngx_log_t *log) {
+#if (NGX_LINUX)
+    if (reader == NULL || zone == NULL) {
+        return;
+    }
+
+    if (ngx_http_cache_index_store_delete_file(reader, &zone->zone_name, path, log)
+            != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, log, 0,
+                      "cache_tag purge continuing after shm index delete failure");
+    }
+#else
+    (void) reader;
+    (void) zone;
+    (void) path;
+    (void) log;
+#endif
+}
+
+static ngx_int_t
+ngx_http_cache_pilot_by_indexed_path(ngx_http_file_cache_t *cache,
+                                     ngx_str_t *path, ngx_flag_t soft,
+                                     ngx_http_cache_index_zone_t *zone,
+                                     ngx_http_cache_index_store_t *reader,
+                                     ngx_log_t *log) {
+    ngx_int_t  rc;
+
+    rc = ngx_http_cache_pilot_by_path(cache, path, soft, log);
+
+    if (!soft && (rc == NGX_OK || rc == NGX_DECLINED)) {
+        ngx_http_cache_pilot_delete_index_path(reader, zone, path, log);
+    }
+
+    return rc;
 }
 
 static ngx_int_t
@@ -2695,39 +2856,10 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
     c = r->cache;
     cache = c->file_cache;
 
-    /*
-     * delete file from disk but *keep* in-memory node,
-     * because other requests might still point to it.
-     */
-
-    ngx_shmtx_lock(&cache->shpool->mutex);
-
-    if (!c->node->exists) {
-        /* race between concurrent purges, backoff */
-        ngx_shmtx_unlock(&cache->shpool->mutex);
+    if (ngx_http_cache_pilot_delete_path(cache, &c->file.name, c->node, 1, 0, 1,
+                                         r->connection->log)
+            == NGX_DECLINED) {
         return NGX_DECLINED;
-    }
-
-#  if (nginx_version >= 1000001)
-    cache->sh->size -= c->node->fs_size;
-    c->node->fs_size = 0;
-#  else
-    cache->sh->size -= (c->node->length + cache->bsize - 1) / cache->bsize;
-    c->node->length = 0;
-#  endif
-
-    c->node->exists = 0;
-#  if (nginx_version >= 8001) \
-       || ((nginx_version < 8000) && (nginx_version >= 7060))
-    c->node->updating = 0;
-#  endif
-
-    ngx_shmtx_unlock(&cache->shpool->mutex);
-
-    if (ngx_delete_file(c->file.name.data) == NGX_FILE_ERROR) {
-        /* entry in error log is enough, don't notice client */
-        ngx_log_error(NGX_LOG_CRIT, r->connection->log, ngx_errno,
-                      ngx_delete_file_n " \"%s\" failed", c->file.name.data);
     }
 
     /* file deleted from cache */
@@ -2755,6 +2887,9 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
             kv = c->keys.elts;
             if (c->keys.nelts > 0) {
                 key_text = kv[0];
+                ngx_http_cache_pilot_delete_index_path(reader, tag_zone,
+                                                       &c->file.name,
+                                                       r->connection->log);
                 fan_paths = NULL;
                 if (ngx_http_cache_index_store_collect_paths_by_exact_key(
                             reader, r->pool, &tag_zone->zone_name, &key_text,
@@ -2762,8 +2897,12 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
                         && fan_paths != NULL && fan_paths->nelts > 0) {
                     fp = fan_paths->elts;
                     for (ki = 0; ki < fan_paths->nelts; ki++) {
-                        purge_rc = ngx_http_cache_pilot_by_path(cache, &fp[ki], 0,
-                                                                r->connection->log);
+                        purge_rc = ngx_http_cache_pilot_by_indexed_path(cache,
+                                   &fp[ki],
+                                   0,
+                                   tag_zone,
+                                   reader,
+                                   r->connection->log);
                         if (purge_rc == NGX_OK) {
                             fanout_used = 1;
                             purged_count++;
@@ -3136,8 +3275,11 @@ ngx_http_cache_pilot_partial(ngx_http_request_t *r, ngx_http_file_cache_t *cache
                            &tag_zone->zone_name, &key_prefix, idx_paths->nelts);
 
             for (k = 0; k < idx_paths->nelts; k++) {
-                purge_rc = ngx_http_cache_pilot_by_path(cache, &ip[k], soft,
-                                                        r->connection->log);
+                purge_rc = ngx_http_cache_pilot_by_indexed_path(cache, &ip[k],
+                           soft,
+                           tag_zone,
+                           reader,
+                           r->connection->log);
                 if (purge_rc == NGX_OK) {
                     used_index = 1;
                     purged_count++;

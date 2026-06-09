@@ -5,11 +5,12 @@ use Test::Nginx::Socket;
 
 repeat_each(1);
 
-plan tests => repeat_each() * 80;
+plan tests => repeat_each() * 92;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_stats_cache  keys_zone=stats_test:10m;
     proxy_cache_path  /tmp/ngx_cache_pilot_stats_cache2 keys_zone=stats_test2:10m;
+    proxy_cache_path  /tmp/ngx_cache_pilot_stats_walk_cache keys_zone=stats_walk_test:10m;
     proxy_temp_path   /tmp/ngx_cache_pilot_stats_temp 1 2;
 _EOC_
 
@@ -26,6 +27,21 @@ our $config = <<'_EOC_';
         proxy_cache        stats_test;
         proxy_cache_key    $1$is_args$args;
         proxy_cache_purge  1;
+    }
+
+    location /proxy_walk {
+        proxy_pass         $scheme://127.0.0.1:$server_port/etc/passwd;
+        proxy_cache        stats_walk_test;
+        proxy_cache_key    $uri$is_args$args;
+        proxy_cache_valid  3m;
+        add_header         X-Cache-Status $upstream_cache_status;
+    }
+
+    location /purge_walk_all {
+        proxy_pass         $scheme://127.0.0.1:$server_port/etc/passwd;
+        proxy_cache        stats_walk_test;
+        proxy_cache_key    $uri$is_args$args;
+        proxy_cache_purge  1 purge_all;
     }
 
     location = /etc/passwd {
@@ -327,6 +343,30 @@ GET /_stats?format=prometheus
 --- response_headers
 Content-Type: text/plain; version=0.0.4; charset=utf-8
 --- response_body_like: (?s)nginx_cache_pilot_zone_entries\{zone="stats_test",state="valid"\} [0-9]+.*nginx_cache_pilot_zone_entries\{zone="stats_test",state="expired"\} [0-9]+.*nginx_cache_pilot_zone_entries\{zone="stats_test",state="updating"\} [0-9]+
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+=== TEST 20: hard purge_all clears nginx cache accounting for walked files
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request eval
+[
+    'GET /proxy_walk/passwd?t=walk_a',
+    'GET /proxy_walk/passwd?t=walk_b',
+    'PURGE /purge_walk_all',
+    'GET /_stats',
+]
+--- error_code eval
+[200, 200, 200, 200]
+--- response_body_like eval
+[
+    'root',
+    'root',
+    '{"key": ',
+    '"stats_walk_test":\{"size":0,[^}]*"entries":\{"total":0,"valid":0,"expired":0,"updating":0\}',
+]
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
