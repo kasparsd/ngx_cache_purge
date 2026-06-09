@@ -33,7 +33,7 @@ jobs:
 
       - name: Pull docker images
         continue-on-error: true
-        run: docker compose pull dev 
+        run: docker compose pull dev
 
       - name: Run benchmark suite
         run: docker compose run --rm dev make bench-quick
@@ -45,6 +45,35 @@ jobs:
           if-no-files-found: error
           path: |
             bench/results/latest/summary.json
-            bench/results/latest/summary.txt
+            bench/results/latest/summary.md
             bench/results/latest/*.json
             bench/results/latest/*.log
+
+  bench-comment:
+    if: github.event_name == 'pull_request' && always()
+    needs: bench
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download benchmark artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: bench-results-nginx-*
+          path: bench-artifacts
+
+      - name: Update benchmark comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: bench-results
+          path: bench-artifacts/bench-results-nginx-*/summary.md
+          message: |
+            ## Benchmark Results
+
+            {{{content}}}
+
+            Updated from ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}.

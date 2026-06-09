@@ -799,10 +799,12 @@ make shell
 make nginx-build
 make bench-quick
 make bench
-cat ./bench/results/latest/summary.txt
+cat ./bench/results/latest/summary.md
 ```
 
-Results are written under `bench/results/<timestamp>/` with one JSON file per scenario plus `summary.json`, `summary.txt`, and nginx log artifacts. The `bench/results/latest` symlink points at the most recent run. The runner always creates an aggregated `nginx_error.log` plus per-startup and per-scenario `*_nginx_error.log` files so CI artifact paths stay stable; when nginx emits log output, `bench/bench.pl` also prints that chunk inline and appends it to those files.
+Results are written under `bench/results/<timestamp>/` with one JSON file per scenario plus `summary.json`, `summary.md`, and nginx log artifacts. The `bench/results/latest` symlink points at the most recent run. The runner always creates an aggregated `nginx_error.log` plus per-startup and per-scenario `*_nginx_error.log` files so CI artifact paths stay stable; when nginx emits log output, `bench/bench.pl` also prints that chunk inline and appends it to those files.
+
+On pull requests, the benchmark workflow aggregates the per-nginx-version `summary.json` artifacts and updates a sticky PR comment with a markdown table of the latest results.
 
 The benchmark suite uses a single nginx runtime per run. It renders `bench/nginx.conf`, starts nginx once, and executes all selected scenarios against that runtime.
 

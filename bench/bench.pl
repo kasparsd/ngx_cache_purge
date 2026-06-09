@@ -15,7 +15,7 @@ use POSIX qw(setpgid strftime);
 use Time::HiRes qw(sleep);
 
 use lib "$FindBin::Bin/lib";
-use Bench qw(fetch_stats format_table hires_time stats_delta write_json);
+use Bench qw(fetch_stats format_markdown_table hires_time stats_delta write_json);
 
 my %options = (
     count       => 1000,
@@ -59,6 +59,8 @@ my $runtime_template_name = 'nginx';
 
 die "nginx binary not found at $nginx; run make nginx-build first\n"
     unless -x $nginx;
+
+my $nginx_version = detect_nginx_version($nginx);
 
 my @all_scenarios = (
     {
@@ -247,6 +249,9 @@ my $summary = {
     scenarios    => \@results,
 };
 
+$summary->{nginx_version} = $nginx_version
+    if defined $nginx_version && length $nginx_version;
+
 if ($failure) {
     $summary->{failure} = $failure;
 }
@@ -262,15 +267,26 @@ if (defined $options{assert_file} && !$failure) {
 }
 
 write_json("$run_dir/summary.json", $summary);
-my $table = format_table(\@results);
-open my $summary_fh, '>', "$run_dir/summary.txt" or die "open(summary.txt): $!";
-print {$summary_fh} $table or die "write(summary.txt): $!";
-close $summary_fh or die "close(summary.txt): $!";
+my @markdown_prefix_headers;
+my @markdown_prefix_rows;
+if (defined $summary->{nginx_version}) {
+    @markdown_prefix_headers = ('NGINX');
+    @markdown_prefix_rows = map { [$summary->{nginx_version}] } @results;
+}
+
+my $markdown_table = format_markdown_table(
+    \@results,
+    prefix_headers => \@markdown_prefix_headers,
+    prefix_rows    => \@markdown_prefix_rows,
+);
+open my $summary_md_fh, '>', "$run_dir/summary.md" or die "open(summary.md): $!";
+print {$summary_md_fh} $markdown_table or die "write(summary.md): $!";
+close $summary_md_fh or die "close(summary.md): $!";
 log_info('Wrote summary artifacts');
 
 update_latest_symlink($options{out_dir}, $timestamp);
 log_info('Updated latest symlink');
-print $table;
+print $markdown_table;
 print_summary_json($summary);
 
 if (defined $summary->{assertions}) {
@@ -1060,6 +1076,16 @@ sub print_summary_json {
 
     print "\nSummary JSON\n";
     print JSON::PP->new->ascii->canonical->pretty->encode($summary);
+}
+
+sub detect_nginx_version {
+    my ($nginx_binary) = @_;
+
+    my $output = `$nginx_binary -v 2>&1`;
+    die "failed to run $nginx_binary -v\n" if $? != 0;
+
+    return $1 if $output =~ m{nginx/([^\s]+)};
+    die "failed to parse nginx version from: $output\n";
 }
 
 sub log_info {
