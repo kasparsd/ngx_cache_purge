@@ -11,7 +11,7 @@ BEGIN {
 
 repeat_each(1);
 
-plan tests => repeat_each() * 136;
+plan tests => repeat_each() * 143;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_key_cache_test keys_zone=key_cache_test:10m;
@@ -521,6 +521,20 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
+=== TEST 25b: repeated exact hard purge finds no stale indexed entry
+--- http_config eval: $::http_config
+--- config eval: $::config_json
+--- more_headers
+X-Variant: a
+--- request
+PURGE /proxy_json/vary
+--- error_code: 412
+--- response_body_like: 412 Precondition Failed
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
 === TEST 26: first JSON vary variant is a miss after exact fan-out purge
 --- http_config eval: $::http_config
 --- config eval: $::config_json
@@ -598,6 +612,20 @@ Content-Type: application/json
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 
+
+
+=== TEST 30b: repeated wildcard hard purge does not reuse stale indexed files
+--- http_config eval: $::http_config
+--- config eval: $::config_json
+--- request
+PURGE /proxy_json/prefix-*
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: ^\{\"key\": \"\/proxy_json\/prefix-\*\", \"cache_pilot\": \{\"purge_path\": \"filesystem-fallback\", \"purged\": \{\"exact\": \{\"hard\": 0, \"soft\": 0\}, \"wildcard\": \{\"hard\": 0, \"soft\": 0\}, \"tag\": \{\"hard\": 0, \"soft\": 0\}, \"all\": \{\"hard\": 0, \"soft\": 0\}\}\}\}$
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 === TEST 31: first JSON prefix entry is a miss after wildcard key-index purge

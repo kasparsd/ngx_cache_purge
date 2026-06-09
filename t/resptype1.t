@@ -47,6 +47,20 @@ our $config = <<'_EOC_';
         cache_pilot_purge_response_type   text;
     }
 
+    location /proxy_header_key {
+        proxy_pass         $scheme://127.0.0.1:$server_port/etc/passwd;
+        proxy_cache        test_cache;
+        proxy_cache_key    $http_x_cache_key;
+        proxy_cache_valid  3m;
+        add_header         X-Cache-Status $upstream_cache_status;
+    }
+
+    location /purge_header_key {
+        proxy_cache                 test_cache;
+        proxy_cache_key             $http_x_cache_key;
+        proxy_cache_purge           1;
+    }
+
     location /proxy_wild_json {
         proxy_pass         $scheme://127.0.0.1:$server_port/etc/passwd;
         proxy_cache        test_cache;
@@ -81,6 +95,39 @@ GET /proxy/passwd
 --- response_headers
 Content-Type: text/plain
 --- response_body_like: root
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+--- skip_nginx2: 4: < 0.8.3 or < 0.7.62
+
+=== TEST 10-prepare: prepare header-derived JSON key with escapes
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- more_headers
+X-Cache-Key: quote"slash\end
+--- request
+GET /proxy_header_key
+--- error_code: 200
+--- response_headers
+Content-Type: text/plain
+--- response_body_like: root
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+--- skip_nginx2: 4: < 0.8.3 or < 0.7.62
+
+
+=== TEST 10: JSON purge response escapes header-derived key
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- more_headers
+X-Cache-Key: quote"slash\end
+--- request
+PURGE /purge_header_key
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: ^\{\"key\": \"quote\\"slash\\\\end\", \"cache_pilot\": \{\"purged\": \{\"exact\": \{\"hard\": 1, \"soft\": 0\}, \"wildcard\": \{\"hard\": 0, \"soft\": 0\}, \"tag\": \{\"hard\": 0, \"soft\": 0\}, \"all\": \{\"hard\": 0, \"soft\": 0\}\}\}\}$
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/

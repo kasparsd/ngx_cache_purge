@@ -266,8 +266,8 @@ static ngx_int_t ngx_http_cache_index_scan_zone(
     ngx_cycle_t *cycle);
 static ngx_int_t ngx_http_cache_index_scan_recursive(
     ngx_http_cache_index_store_t *store, ngx_http_cache_index_zone_t *zone,
-    ngx_pool_t *pool, ngx_str_t *path, ngx_cycle_t *cycle, time_t min_mtime);
-static ngx_int_t ngx_http_cache_index_join_path(ngx_pool_t *pool, ngx_str_t *base,
+    ngx_str_t *path, ngx_cycle_t *cycle, time_t min_mtime);
+static ngx_int_t ngx_http_cache_index_join_path(ngx_log_t *log, ngx_str_t *base,
         const char *name, ngx_str_t *out);
 static ngx_int_t ngx_http_cache_index_runtime_init_zones(
     ngx_cycle_t *cycle, ngx_http_cache_pilot_main_conf_t *pmcf);
@@ -364,8 +364,6 @@ static ngx_int_t
 ngx_http_cache_index_scan_zone(ngx_http_cache_index_store_t *store,
                                ngx_http_cache_index_zone_t *zone,
                                ngx_cycle_t *cycle) {
-    ngx_pool_t *pool;
-
     if (zone == NULL || zone->cache == NULL || zone->cache->path == NULL) {
         return NGX_DECLINED;
     }
@@ -373,18 +371,10 @@ ngx_http_cache_index_scan_zone(ngx_http_cache_index_store_t *store,
     ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
                   "cache_tag bootstrap zone \"%V\"", &zone->zone_name);
 
-    pool = ngx_create_pool(4096, cycle->log);
-    if (pool == NULL) {
-        return NGX_ERROR;
-    }
-
-    if (ngx_http_cache_index_scan_recursive(store, zone, pool,
+    if (ngx_http_cache_index_scan_recursive(store, zone,
                                             &zone->cache->path->name, cycle, 0) != NGX_OK) {
-        ngx_destroy_pool(pool);
         return NGX_ERROR;
     }
-
-    ngx_destroy_pool(pool);
 
     return NGX_OK;
 }
@@ -468,7 +458,7 @@ ngx_http_cache_index_lookup_zone_index(ngx_http_file_cache_t *cache) {
 static ngx_int_t
 ngx_http_cache_index_scan_recursive(ngx_http_cache_index_store_t *store,
                                     ngx_http_cache_index_zone_t *zone,
-                                    ngx_pool_t *pool, ngx_str_t *path, ngx_cycle_t *cycle,
+                                    ngx_str_t *path, ngx_cycle_t *cycle,
                                     time_t min_mtime) {
     DIR            *dir;
     struct dirent  *entry;
@@ -486,40 +476,48 @@ ngx_http_cache_index_scan_recursive(ngx_http_cache_index_store_t *store,
             continue;
         }
 
-        if (ngx_http_cache_index_join_path(pool, path, entry->d_name, &child)
+        if (ngx_http_cache_index_join_path(cycle->log, path, entry->d_name, &child)
                 != NGX_OK) {
             closedir(dir);
             return NGX_ERROR;
         }
 
         if (entry->d_type == DT_DIR) {
-            if (ngx_http_cache_index_scan_recursive(store, zone, pool, &child, cycle,
+            if (ngx_http_cache_index_scan_recursive(store, zone, &child, cycle,
                                                     min_mtime) == NGX_ERROR) {
+                ngx_free(child.data);
                 closedir(dir);
                 return NGX_ERROR;
             }
+            ngx_free(child.data);
             continue;
         }
 
         if (entry->d_type != DT_REG && entry->d_type != DT_UNKNOWN) {
+            ngx_free(child.data);
             continue;
         }
 
         if (min_mtime > 0) {
             if (ngx_file_info(child.data, &fi) == NGX_FILE_ERROR) {
+                ngx_free(child.data);
                 continue;
             }
 
             if (ngx_file_mtime(&fi) <= min_mtime) {
+                ngx_free(child.data);
                 continue;
             }
         }
 
         if (ngx_http_cache_index_store_process_file(store, &zone->zone_name,
                 &child, zone->headers, cycle->log) == NGX_ERROR) {
+            ngx_free(child.data);
             closedir(dir);
             return NGX_ERROR;
         }
+
+        ngx_free(child.data);
     }
 
     closedir(dir);
@@ -636,13 +634,13 @@ ngx_http_cache_index_shutdown_runtime(void) {
 }
 
 static ngx_int_t
-ngx_http_cache_index_join_path(ngx_pool_t *pool, ngx_str_t *base, const char *name,
+ngx_http_cache_index_join_path(ngx_log_t *log, ngx_str_t *base, const char *name,
                                ngx_str_t *out) {
     size_t  name_len;
 
     name_len = ngx_strlen(name);
     out->len = base->len + 1 + name_len;
-    out->data = ngx_pnalloc(pool, out->len + 1);
+    out->data = ngx_alloc(out->len + 1, log);
     if (out->data == NULL) {
         return NGX_ERROR;
     }
