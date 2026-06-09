@@ -474,6 +474,9 @@ location /_cache_stats {
     "exact_fanout": 0,
     "wildcard_hits": 0
   },
+  "index_store": {
+    "alloc_failures": 0
+  },
   "zones": {
     "zone-one": {
       "size": 35184,
@@ -488,6 +491,8 @@ location /_cache_stats {
       "index": {
         "state": "ready",
         "state_code": 2,
+        "max_size": 33554432,
+        "last_bootstrap_at": 1776605400,
         "last_updated_at": 1776605478,
         "backend": "shm"
       }
@@ -498,7 +503,7 @@ location /_cache_stats {
 
 Additional zones are omitted for brevity.
 
-`zones.<zone>.max_size` reports the configured NGINX cache zone limit. When the in-memory index is enabled, `index.max_size` reports the configured `cache_pilot_index_zone_size` shared-memory limit for the index and `index.last_updated_at` reports the Unix epoch timestamp of the last index mutation observed for that zone. `index` is omitted when the in-memory index is unavailable. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `index.backend` is currently always `"shm"`. `purges` counters are global across all zones and survive `nginx -s reload`. `purged` uses the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts for cumulative cache entries removed or expired by each purge path.
+`zones.<zone>.max_size` reports the configured NGINX cache zone limit. When the in-memory index is enabled, `index.max_size` reports the configured `cache_pilot_index_zone_size` shared-memory limit for the index, `index.last_bootstrap_at` reports the Unix epoch timestamp of the last completed bootstrap, and `index.last_updated_at` reports the Unix epoch timestamp of the last index mutation observed for that zone. `index_store.alloc_failures` reports shared-memory allocation failures observed by the index store. `index.not_ready_reason` is present when the index is configured but not ready, with values such as `reader_unavailable`, `zone_not_registered`, or `index_not_ready`. `index` is omitted when the in-memory index is unavailable. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `index.backend` is currently always `"shm"`. `purges` counters are global across all zones and survive `nginx -s reload`. `purged` uses the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts for cumulative cache entries removed or expired by each purge path.
 
 **Prometheus metrics** (prefix `nginx_cache_pilot_`):
 
@@ -510,7 +515,10 @@ Additional zones are omitted for brevity.
 - `nginx_cache_pilot_zone_cold{zone}` — gauge, 1 while the cache loader is still warming the zone
 - `nginx_cache_pilot_zone_entries{zone,state}` — gauge, entry count by state (`valid`, `expired`, `updating`)
 - `nginx_cache_pilot_index_max_size_bytes{zone}` — gauge, configured maximum shared-memory cache index size
+- `nginx_cache_pilot_index_alloc_failures_total` — counter, shared-memory allocation failures observed by the index store
+- `nginx_cache_pilot_index_last_bootstrap_at_seconds{zone}` — gauge, Unix epoch timestamp of the last completed bootstrap for the zone
 - `nginx_cache_pilot_index_last_updated_at_seconds{zone}` — gauge, Unix epoch timestamp of the last in-memory index update for the zone
+- `nginx_cache_pilot_index_not_ready{zone,reason}` — gauge, present with value `1` when a configured index is not ready for a specific reason
 - `nginx_cache_pilot_index_state{zone,state}` — gauge, per-zone key index readiness (`0=disabled`, `1=configured`, `2=ready`)
 - `nginx_cache_pilot_index_info{zone,backend}` — info gauge, tag index backend type
 

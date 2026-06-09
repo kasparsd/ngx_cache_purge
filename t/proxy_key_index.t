@@ -11,7 +11,7 @@ BEGIN {
 
 repeat_each(1);
 
-plan tests => repeat_each() * 143;
+plan tests => repeat_each() * 144;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_key_cache_test keys_zone=key_cache_test:10m;
@@ -62,8 +62,6 @@ our $config = <<'_EOC_';
 _EOC_
 
 our $config_json = $config . <<'_EOC_';
-    cache_pilot_purge_response_type json;
-
     location ~ ^/proxy_json/(.+)$ {
         proxy_pass         $scheme://127.0.0.1:$server_port/origin/$1;
         proxy_cache        key_cache_test;
@@ -71,6 +69,7 @@ our $config_json = $config . <<'_EOC_';
         proxy_cache_valid  3m;
         add_header         X-Cache-Status $upstream_cache_status;
         proxy_cache_purge  $purge_method;
+        cache_pilot_purge_response_type json;
         cache_pilot_purge_mode_header X-Purge-Mode;
         cache_pilot_index on;
     }
@@ -529,7 +528,9 @@ X-Variant: a
 --- request
 PURGE /proxy_json/vary
 --- error_code: 412
---- response_body_like: 412 Precondition Failed
+--- response_headers
+Content-Type: application/json
+--- response_body_like: ^\{"cache_pilot":\{"declined":true,"reason":"not_found"\}\}$
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/

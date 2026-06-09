@@ -36,6 +36,9 @@ static ngx_int_t ngx_http_cache_index_store_shm_collect_paths_by_key_prefix(
 static ngx_int_t ngx_http_cache_index_store_shm_get_zone_state(
     ngx_http_cache_index_store_t *store, ngx_str_t *zone_name,
     ngx_http_cache_index_zone_state_t *state, ngx_log_t *log);
+static ngx_int_t ngx_http_cache_index_store_shm_get_stats(
+    ngx_http_cache_index_store_t *store, ngx_str_t *zone_name,
+    ngx_http_cache_index_store_stats_t *stats, ngx_log_t *log);
 static ngx_int_t ngx_http_cache_index_store_shm_set_zone_state(
     ngx_http_cache_index_store_t *store, ngx_str_t *zone_name,
     ngx_http_cache_index_zone_state_t *state, ngx_log_t *log);
@@ -241,6 +244,14 @@ ngx_http_cache_index_store_get_zone_state(ngx_http_cache_index_store_t *store,
         ngx_log_t *log) {
     return ngx_http_cache_index_store_shm_get_zone_state(store, zone_name, state,
             log);
+}
+
+ngx_int_t
+ngx_http_cache_index_store_get_stats(ngx_http_cache_index_store_t *store,
+                                     ngx_str_t *zone_name,
+                                     ngx_http_cache_index_store_stats_t *stats,
+                                     ngx_log_t *log) {
+    return ngx_http_cache_index_store_shm_get_stats(store, zone_name, stats, log);
 }
 
 ngx_int_t
@@ -1304,6 +1315,36 @@ ngx_http_cache_index_store_shm_get_zone_state(ngx_http_cache_index_store_t *stor
 
     ngx_http_cache_index_store_normalize_zone_state(state, zone_name, log,
             "read");
+
+    return NGX_OK;
+}
+
+static ngx_int_t
+ngx_http_cache_index_store_shm_get_stats(ngx_http_cache_index_store_t *store,
+        ngx_str_t *zone_name, ngx_http_cache_index_store_stats_t *stats,
+        ngx_log_t *log) {
+    ngx_http_cache_index_store_ctx_t  *ctx;
+
+    (void) log;
+    (void) zone_name;
+
+    if (store == NULL || stats == NULL) {
+        return NGX_ERROR;
+    }
+
+    ngx_memzero(stats, sizeof(ngx_http_cache_index_store_stats_t));
+
+    ctx = store->ctx;
+    ngx_shmtx_lock(&ctx->shpool->mutex);
+
+    if (ctx->sh == NULL) {
+        ngx_shmtx_unlock(&ctx->shpool->mutex);
+        return NGX_OK;
+    }
+
+    stats->alloc_failures = ctx->sh->alloc_failures;
+
+    ngx_shmtx_unlock(&ctx->shpool->mutex);
 
     return NGX_OK;
 }

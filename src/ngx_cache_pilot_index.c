@@ -198,6 +198,8 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
                ngx_http_module);
     pmcf = http_ctx->main_conf[ngx_http_cache_pilot_module.ctx_index];
     if (!ngx_http_cache_index_store_configured(pmcf)) {
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_INDEX_NOT_CONFIGURED);
         return NGX_DECLINED;
     }
 
@@ -211,10 +213,14 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
         ngx_log_error(NGX_LOG_NOTICE, r->connection->log, 0,
                       "cache_tag purge skipped because zone \"%V\" is not registered for indexing",
                       &cache->shm_zone->shm.name);
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_ZONE_NOT_REGISTERED);
         return NGX_DECLINED;
     }
 
 #if !(NGX_LINUX)
+    ngx_http_cache_pilot_set_decline_reason(
+        r, NGX_HTTP_CACHE_PILOT_DECLINE_UNSUPPORTED_PLATFORM);
     return NGX_DECLINED;
 #else
     reused_persisted_index = 0;
@@ -224,6 +230,8 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
         ngx_log_error(NGX_LOG_NOTICE, r->connection->log, 0,
                       "cache_tag purge skipped because index reader is unavailable for zone \"%V\"",
                       &zone->zone_name);
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_READER_UNAVAILABLE);
         return NGX_DECLINED;
     }
 
@@ -241,6 +249,8 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
         ngx_log_error(NGX_LOG_NOTICE, r->connection->log, 0,
                       "cache_tag purge skipped because index zone \"%V\" is not ready",
                       &zone->zone_name);
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_INDEX_NOT_READY);
         return NGX_DECLINED;
     }
 
@@ -280,6 +290,10 @@ ngx_http_cache_index_purge(ngx_http_request_t *r, ngx_http_file_cache_t *cache,
     }
 
     rc = purged > 0 ? NGX_OK : NGX_DECLINED;
+    if (rc == NGX_DECLINED) {
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND);
+    }
 
     if (rc == NGX_OK) {
         ngx_http_cache_pilot_record_response_purge(r,
