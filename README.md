@@ -350,10 +350,10 @@ This header only switches soft versus hard mode after the request has already ma
 #### `cache_pilot_index_zone_size`
 
 - **syntax**: `cache_pilot_index_zone_size <size>`
-- **default**: `none`
+- **default**: `32m`
 - **context**: `http`
 
-Allocate the shared-memory zone used for cache-tag indexing and cache-key metadata. This feature is currently Linux-only.
+Set the size of the shared-memory zone used for cache-tag indexing and cache-key metadata. On Linux, the module allocates this zone with the default `32m` size even when the directive is omitted. Configure a different size when the default is too small or too large for the cache footprint.
 
 The index is process-local shared state managed by nginx workers. It is rebuilt from cache files after a cold restart and does not survive nginx process restarts.
 
@@ -391,9 +391,9 @@ Enable cache-tag indexing for the cache used by the current purge-enabled locati
 
 At startup, index bootstrap waits until the nginx cache zone is no longer cold, then performs a one-time cache-tree scan before indexed tag purges for that zone are considered ready.
 
-When `cache_pilot_index_zone_size` is also configured, cached response writes also update the shared-memory exact-key index used by exact-key fanout. Wildcard key-prefix purge paths reuse the same in-memory file metadata, but do not yet use a dedicated prefix tree.
+Cached response writes also update the shared-memory exact-key index used by exact-key fanout. Wildcard key-prefix purge paths reuse the same in-memory file metadata, but do not yet use a dedicated prefix tree.
 
-Set `cache_pilot_index off;` to opt out on locations where indexing should stay disabled.
+Set `cache_pilot_index off;` to opt out on locations where indexing should stay disabled. This disables indexing for that location, but it does not remove the global index shared-memory zone allocated by `cache_pilot_index_zone_size`.
 
 For hard tag purges, matching cache files are removed immediately and their in-memory index entries are deleted in the same purge path.
 
