@@ -11,7 +11,7 @@ BEGIN {
 
 repeat_each(1);
 
-plan tests => repeat_each() * 144;
+plan tests => repeat_each() * 164;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_key_cache_test keys_zone=key_cache_test:10m;
@@ -28,6 +28,17 @@ our $config = <<'_EOC_';
         proxy_pass         $scheme://127.0.0.1:$server_port/origin/$1;
         proxy_cache        key_cache_test;
         proxy_cache_key    $uri;
+        proxy_cache_valid  3m;
+        add_header         X-Cache-Status $upstream_cache_status;
+        proxy_cache_purge  $purge_method;
+        cache_pilot_purge_mode_header X-Purge-Mode;
+        cache_pilot_index on;
+    }
+
+    location ~ ^/proxy_query/(.+)$ {
+        proxy_pass         $scheme://127.0.0.1:$server_port/origin/$1;
+        proxy_cache        key_cache_test;
+        proxy_cache_key    $uri$is_args$args;
         proxy_cache_valid  3m;
         add_header         X-Cache-Status $upstream_cache_status;
         proxy_cache_purge  $purge_method;
@@ -147,7 +158,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 5: soft tag purge bootstraps zone and expires vary entries
+=== TEST 6: soft tag purge bootstraps zone and expires vary entries
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -166,7 +177,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 6: first vary variant refreshes after bootstrap purge
+=== TEST 7: first vary variant refreshes after bootstrap purge
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -183,7 +194,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 7: second vary variant refreshes after bootstrap purge
+=== TEST 8: second vary variant refreshes after bootstrap purge
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -200,7 +211,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 8: stats report zone ready after bootstrap purge
+=== TEST 9: stats report zone ready after bootstrap purge
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- request
@@ -215,7 +226,7 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 
 
 
-=== TEST 9: exact soft purge still targets one direct key on indexed zone
+=== TEST 10: exact soft purge still targets one direct key on indexed zone
 --- http_config eval: $::http_config
 --- config eval: $::config
 --- more_headers
@@ -463,6 +474,91 @@ GET /_stats
 --- response_headers
 Content-Type: application/json
 --- response_body_like: (?s)"key_index":\{[^}]*"wildcard_hits":
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 22a: prepare query-key vary variant a for exact fanout
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- more_headers
+X-Variant: a
+--- request
+GET /proxy_query/vary?case=multi
+--- error_code: 200
+--- response_headers
+X-Cache-Status: MISS
+--- response_body: vary-a
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 22b: prepare query-key vary variant b for exact fanout
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- more_headers
+X-Variant: b
+--- request
+GET /proxy_query/vary?case=multi
+--- error_code: 200
+--- response_headers
+X-Cache-Status: MISS
+--- response_body: vary-b
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 22c: exact purge fans out for query-bearing cache key
+--- http_config eval: $::http_config
+--- config eval: $::config_json
+--- more_headers
+X-Variant: a
+--- request
+PURGE /proxy_query/vary?case=multi
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: ^\{\"key\": \"\/proxy_query\/vary\?case=multi\", \"cache_pilot\": \{\"purge_path\": \"exact-key-fanout\", \"purged\": \{\"exact\": \{\"hard\": 2, \"soft\": 0\}, \"wildcard\": \{\"hard\": 0, \"soft\": 0\}, \"tag\": \{\"hard\": 0, \"soft\": 0\}, \"all\": \{\"hard\": 0, \"soft\": 0\}\}\}\}$
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 22d: first query-key vary variant is a miss after fanout
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- more_headers
+X-Variant: a
+--- request
+GET /proxy_query/vary?case=multi
+--- error_code: 200
+--- response_headers
+X-Cache-Status: MISS
+--- response_body: vary-a
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 22e: second query-key vary variant is a miss after fanout
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- more_headers
+X-Variant: b
+--- request
+GET /proxy_query/vary?case=multi
+--- error_code: 200
+--- response_headers
+X-Cache-Status: MISS
+--- response_body: vary-b
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
