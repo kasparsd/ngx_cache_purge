@@ -22,6 +22,9 @@ typedef struct {
     ngx_uint_t index_state;
     ngx_uint_t has_index;
     time_t     index_last_updated_at;
+    time_t     index_last_bootstrap_at;
+    const char *index_not_ready_reason;
+    ngx_http_cache_index_store_stats_t index_stats;
 } ngx_http_cache_pilot_zone_snapshot_t;
 
 
@@ -103,12 +106,17 @@ ngx_http_cache_pilot_snapshot_zone(ngx_http_cache_pilot_stat_zone_t *sz,
     snap->index_state    = NGX_CACHE_PILOT_INDEX_STATE_DISABLED;
     snap->has_index      = 0;
     snap->index_last_updated_at = 0;
+    snap->index_last_bootstrap_at = 0;
+    snap->index_not_ready_reason = NULL;
+    ngx_memzero(&snap->index_stats,
+                sizeof(ngx_http_cache_index_store_stats_t));
 
 #if (NGX_LINUX)
     if (ngx_http_cache_index_store_configured(pmcf)) {
         snap->index_state   = NGX_CACHE_PILOT_INDEX_STATE_CONFIGURED;
         snap->has_index     = 1;
         snap->index_max_size = (off_t) pmcf->index_shm_size;
+        snap->index_not_ready_reason = "reader_unavailable";
 
         reader = ngx_http_cache_index_store_reader(pmcf, ngx_cycle->log);
         if (reader == NULL) {
@@ -122,13 +130,20 @@ ngx_http_cache_pilot_snapshot_zone(ngx_http_cache_pilot_stat_zone_t *sz,
         if (reader != NULL
                 && ngx_http_cache_index_store_get_zone_state(reader, &snap->name,
                         &state, ngx_cycle->log) == NGX_OK) {
+            snap->index_last_bootstrap_at = state.last_bootstrap_at;
             snap->index_last_updated_at = state.last_updated_at;
+            snap->index_not_ready_reason = state.bootstrap_complete
+                                           ? NULL : "index_not_ready";
+            (void) ngx_http_cache_index_store_get_stats(reader, &snap->name,
+                    &snap->index_stats, ngx_cycle->log);
         }
 
-        if ((ngx_http_cache_index_lookup_zone(cache) != NULL && reader != NULL)
-                || ngx_http_cache_index_zone_bootstrap_complete_sync(pmcf, cache,
-                        ngx_cycle->log)) {
+        if (ngx_http_cache_index_lookup_zone(cache) != NULL && reader != NULL
+                && state.bootstrap_complete) {
             snap->index_state = NGX_CACHE_PILOT_INDEX_STATE_READY;
+            snap->index_not_ready_reason = NULL;
+        } else if (reader != NULL && ngx_http_cache_index_lookup_zone(cache) == NULL) {
+            snap->index_not_ready_reason = "zone_not_registered";
         }
     }
 #endif
@@ -214,6 +229,25 @@ ngx_http_cache_pilot_index_state_str(ngx_uint_t state) {
     }
 }
 
+static const char *
+ngx_http_cache_pilot_index_not_ready_reason(ngx_http_cache_pilot_zone_snapshot_t *s) {
+    return s->index_not_ready_reason != NULL ? s->index_not_ready_reason : "";
+}
+
+static ngx_uint_t
+ngx_http_cache_pilot_index_alloc_failures(ngx_uint_t nzones,
+        ngx_http_cache_pilot_zone_snapshot_t *snaps) {
+    ngx_uint_t  i;
+
+    for (i = 0; i < nzones; i++) {
+        if (snaps[i].has_index) {
+            return snaps[i].index_stats.alloc_failures;
+        }
+    }
+
+    return 0;
+}
+
 
 /* ── JSON serializer ── */
 
@@ -243,6 +277,9 @@ ngx_http_cache_pilot_write_json(u_char *p, u_char *last,
                      "\"key_index\":{"
                      "\"exact_fanout\":%uA,"
                      "\"wildcard_hits\":%uA"
+                     "},"
+                     "\"index_store\":{"
+                     "\"alloc_failures\":%ui"
                      "},",
                      ngx_time(),
                      m ? ngx_cache_pilot_metrics_read(&m->purges_exact_hard)    : (ngx_atomic_uint_t)0,
@@ -262,7 +299,8 @@ ngx_http_cache_pilot_write_json(u_char *p, u_char *last,
                      m ? ngx_cache_pilot_metrics_read(&m->purged_all_hard)     : (ngx_atomic_uint_t)0,
                      m ? ngx_cache_pilot_metrics_read(&m->purged_all_soft)     : (ngx_atomic_uint_t)0,
                      m ? ngx_cache_pilot_metrics_read(&m->key_index_exact_fanout)  : (ngx_atomic_uint_t)0,
-                     m ? ngx_cache_pilot_metrics_read(&m->key_index_wildcard_hits) : (ngx_atomic_uint_t)0);
+                     m ? ngx_cache_pilot_metrics_read(&m->key_index_wildcard_hits) : (ngx_atomic_uint_t)0,
+                     ngx_http_cache_pilot_index_alloc_failures(nzones, snaps));
 
     p = ngx_slprintf(p, last, "\"zones\":{");
 
@@ -301,14 +339,25 @@ ngx_http_cache_pilot_write_json(u_char *p, u_char *last,
                              "\"state\":\"%s\","
                              "\"state_code\":%ui,"
                              "\"max_size\":%O,"
+                             "\"last_bootstrap_at\":%T,"
                              "\"last_updated_at\":%T,"
-                             "\"backend\":\"%s\""
-                             "}",
+                             "\"backend\":\"%s\"",
                              ngx_http_cache_pilot_index_state_str(s->index_state),
                              s->index_state,
                              s->index_max_size,
+                             s->index_last_bootstrap_at,
                              s->index_last_updated_at,
                              "shm");
+
+            if (s->index_not_ready_reason != NULL) {
+                p = ngx_slprintf(p, last,
+                                 ",\"not_ready_reason\":\"%s\"",
+                                 ngx_http_cache_pilot_index_not_ready_reason(s));
+            }
+
+            if (p < last) {
+                *p++ = '}';
+            }
         }
 
         if (p < last) {
@@ -443,6 +492,38 @@ ngx_http_cache_pilot_write_prometheus(u_char *p, u_char *last,
         p = ngx_slprintf(p, last,
                          "nginx_cache_pilot_index_last_updated_at_seconds{zone=\"%V\"} %T\n",
                          &s->name, s->index_last_updated_at);
+    }
+
+    p = ngx_slprintf(p, last,
+                     "# HELP nginx_cache_pilot_index_last_bootstrap_at_seconds"
+                     " Unix epoch timestamp of the last completed index bootstrap for the zone\n"
+                     "# TYPE nginx_cache_pilot_index_last_bootstrap_at_seconds gauge\n"
+                     "# HELP nginx_cache_pilot_index_alloc_failures_total"
+                     " Shared-memory allocation failures observed by the cache index\n"
+                     "# TYPE nginx_cache_pilot_index_alloc_failures_total counter\n"
+                     "# HELP nginx_cache_pilot_index_not_ready"
+                     " Index not-ready reason for configured zones (1 when active)\n"
+                     "# TYPE nginx_cache_pilot_index_not_ready gauge\n");
+    p = ngx_slprintf(p, last,
+                     "nginx_cache_pilot_index_alloc_failures_total %ui\n",
+                     ngx_http_cache_pilot_index_alloc_failures(nzones, snaps));
+
+    for (i = 0; i < nzones; i++) {
+        s = &snaps[i];
+        if (!s->has_index) {
+            continue;
+        }
+
+        p = ngx_slprintf(p, last,
+                         "nginx_cache_pilot_index_last_bootstrap_at_seconds{zone=\"%V\"} %T\n",
+                         &s->name, s->index_last_bootstrap_at);
+
+        if (s->index_not_ready_reason != NULL) {
+            p = ngx_slprintf(p, last,
+                             "nginx_cache_pilot_index_not_ready{zone=\"%V\",reason=\"%s\"} 1\n",
+                             &s->name,
+                             ngx_http_cache_pilot_index_not_ready_reason(s));
+        }
     }
 
     /* Zone cold */
@@ -621,12 +702,12 @@ ngx_http_cache_pilot_metrics_handler(ngx_http_request_t *r) {
 
     /*
      * Pre-allocate a buffer large enough for the response.
-     * Generous upper bounds: 2 KB base + ~1.5 KB per zone for Prometheus,
-     * 512 B base + ~600 B per zone for JSON.
+     * Generous upper bounds: 3 KB base + ~2.5 KB per zone for Prometheus,
+     * 512 B base + ~1 KB per zone for JSON.
      */
     buf_size = (fmt == NGX_CACHE_PILOT_METRICS_FORMAT_PROMETHEUS)
-               ? (2048 + nzones * 1536)
-               : (512  + nzones * 600);
+               ? (3072 + nzones * 2560)
+               : (512  + nzones * 1024);
     buf_size = ngx_align(buf_size, ngx_pagesize);
 
     buf = ngx_palloc(r->pool, buf_size);

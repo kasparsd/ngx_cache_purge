@@ -10,6 +10,7 @@ use Time::HiRes qw(gettimeofday);
 
 our @EXPORT_OK = qw(
     fetch_stats
+    format_markdown_table
     format_table
     hires_time
     percentile
@@ -131,13 +132,97 @@ sub _format_hit_percent {
     return sprintf('%.1f%%', ($ratio || 0) * 100);
 }
 
+sub _markdown_cell {
+    my ($value) = @_;
+
+    $value = '-' unless defined $value && length $value;
+    $value =~ s/\\/\\\\/g;
+    $value =~ s/\|/\\|/g;
+    $value =~ s/\r?\n/<br>/g;
+
+    return $value;
+}
+
+sub _markdown_row {
+    my ($cells) = @_;
+
+    return '| ' . join(' | ', map { _markdown_cell($_) } @{$cells}) . ' |';
+}
+
+sub _summary_row {
+    my ($result, $prefix_cells) = @_;
+
+    my $index_plan = defined $result->{table_index_plan}
+        ? $result->{table_index_plan}
+        : '-';
+    my $index_seen = defined $result->{table_index_observed}
+        ? $result->{table_index_observed}
+        : '-';
+    my $valid = _validity_label($index_seen);
+
+    return [
+        @{$prefix_cells || []},
+        $valid,
+        $result->{table_name},
+        sprintf('%.1f', $result->{get}->{rps} || 0),
+        _format_milliseconds($result->{get}->{latency_us}->{p50} || 0),
+        _format_milliseconds($result->{get}->{latency_us}->{p95} || 0),
+        _format_milliseconds($result->{get}->{latency_us}->{p99} || 0),
+        _format_hit_percent($result->{get}->{cache_hit_rate}),
+        $result->{purge}->{purge_count} || 0,
+        $index_plan,
+        $index_seen,
+    ];
+}
+
+sub _validity_label {
+    my ($index_seen) = @_;
+
+    return '❌ invalid'
+        if defined $index_seen && ($index_seen eq 'not-rdy'
+                                  || $index_seen eq 'miss-rdy');
+
+    return '✅ valid';
+}
+
+sub format_markdown_table {
+    my ($results, %options) = @_;
+
+    my @prefix_headers = @{ $options{prefix_headers} || [] };
+    my @prefix_rows = @{ $options{prefix_rows} || [] };
+    my @headers = (
+        @prefix_headers,
+        'Valid',
+        'Scenario',
+        'GET rps',
+        'p50',
+        'p95',
+        'p99',
+        'Hit%',
+        'Purges',
+        'IdxPlan',
+        'IdxSeen',
+    );
+    my @lines = (
+        _markdown_row(\@headers),
+        _markdown_row([map { '---' } @headers]),
+    );
+
+    for my $i (0 .. $#{$results}) {
+        my $prefix_cells = $prefix_rows[$i] || [];
+        push @lines, _markdown_row(_summary_row($results->[$i], $prefix_cells));
+    }
+
+    return join("\n", @lines) . "\n";
+}
+
 sub format_table {
     my ($results) = @_;
     my @lines = (
-        sprintf('%-22s %8s %7s %7s %7s %6s %7s %8s %9s',
-            'Scenario', 'GET rps', 'p50', 'p95', 'p99', 'Hit%', 'Purges',
+        sprintf('%-9s %-22s %8s %7s %7s %7s %6s %7s %8s %9s',
+            'Valid', 'Scenario', 'GET rps', 'p50', 'p95', 'p99', 'Hit%', 'Purges',
             'IdxPlan', 'IdxSeen'),
-        '-' x 98,
+        '-' x 108,
     );
 
     for my $result (@{$results}) {
@@ -147,8 +232,10 @@ sub format_table {
         my $index_seen = defined $result->{table_index_observed}
             ? $result->{table_index_observed}
             : '-';
+        my $valid = _validity_label($index_seen);
 
-        push @lines, sprintf('%-22s %8.1f %7s %7s %7s %6s %7d %8s %9s',
+        push @lines, sprintf('%-9s %-22s %8.1f %7s %7s %7s %6s %7d %8s %9s',
+            $valid,
             $result->{table_name},
             $result->{get}->{rps} || 0,
             _format_milliseconds($result->{get}->{latency_us}->{p50} || 0),

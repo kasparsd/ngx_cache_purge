@@ -350,10 +350,10 @@ This header only switches soft versus hard mode after the request has already ma
 #### `cache_pilot_index_zone_size`
 
 - **syntax**: `cache_pilot_index_zone_size <size>`
-- **default**: `none`
+- **default**: `32m`
 - **context**: `http`
 
-Allocate the shared-memory zone used for cache-tag indexing and cache-key metadata. This feature is currently Linux-only.
+Set the size of the shared-memory zone used for cache-tag indexing and cache-key metadata. On Linux, the module allocates this zone with the default `32m` size even when the directive is omitted. Configure a different size when the default is too small or too large for the cache footprint.
 
 The index is process-local shared state managed by nginx workers. It is rebuilt from cache files after a cold restart and does not survive nginx process restarts.
 
@@ -391,9 +391,9 @@ Enable cache-tag indexing for the cache used by the current purge-enabled locati
 
 At startup, index bootstrap waits until the nginx cache zone is no longer cold, then performs a one-time cache-tree scan before indexed tag purges for that zone are considered ready.
 
-When `cache_pilot_index_zone_size` is also configured, cached response writes also update the shared-memory exact-key index used by exact-key fanout. Wildcard key-prefix purge paths reuse the same in-memory file metadata, but do not yet use a dedicated prefix tree.
+Cached response writes also update the shared-memory exact-key index used by exact-key fanout. Wildcard key-prefix purge paths reuse the same in-memory file metadata, but do not yet use a dedicated prefix tree.
 
-Set `cache_pilot_index off;` to opt out on locations where indexing should stay disabled.
+Set `cache_pilot_index off;` to opt out on locations where indexing should stay disabled. This disables indexing for that location, but it does not remove the global index shared-memory zone allocated by `cache_pilot_index_zone_size`.
 
 For hard tag purges, matching cache files are removed immediately and their in-memory index entries are deleted in the same purge path.
 
@@ -474,6 +474,9 @@ location /_cache_stats {
     "exact_fanout": 0,
     "wildcard_hits": 0
   },
+  "index_store": {
+    "alloc_failures": 0
+  },
   "zones": {
     "zone-one": {
       "size": 35184,
@@ -488,6 +491,8 @@ location /_cache_stats {
       "index": {
         "state": "ready",
         "state_code": 2,
+        "max_size": 33554432,
+        "last_bootstrap_at": 1776605400,
         "last_updated_at": 1776605478,
         "backend": "shm"
       }
@@ -498,7 +503,7 @@ location /_cache_stats {
 
 Additional zones are omitted for brevity.
 
-`zones.<zone>.max_size` reports the configured NGINX cache zone limit. When the in-memory index is enabled, `index.max_size` reports the configured `cache_pilot_index_zone_size` shared-memory limit for the index and `index.last_updated_at` reports the Unix epoch timestamp of the last index mutation observed for that zone. `index` is omitted when the in-memory index is unavailable. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `index.backend` is currently always `"shm"`. `purges` counters are global across all zones and survive `nginx -s reload`. `purged` uses the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts for cumulative cache entries removed or expired by each purge path.
+`zones.<zone>.max_size` reports the configured NGINX cache zone limit. When the in-memory index is enabled, `index.max_size` reports the configured `cache_pilot_index_zone_size` shared-memory limit for the index, `index.last_bootstrap_at` reports the Unix epoch timestamp of the last completed bootstrap, and `index.last_updated_at` reports the Unix epoch timestamp of the last index mutation observed for that zone. `index_store.alloc_failures` reports shared-memory allocation failures observed by the index store. `index.not_ready_reason` is present when the index is configured but not ready, with values such as `reader_unavailable`, `zone_not_registered`, or `index_not_ready`. `index` is omitted when the in-memory index is unavailable. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `index.backend` is currently always `"shm"`. `purges` counters are global across all zones and survive `nginx -s reload`. `purged` uses the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts for cumulative cache entries removed or expired by each purge path.
 
 **Prometheus metrics** (prefix `nginx_cache_pilot_`):
 
@@ -510,7 +515,10 @@ Additional zones are omitted for brevity.
 - `nginx_cache_pilot_zone_cold{zone}` — gauge, 1 while the cache loader is still warming the zone
 - `nginx_cache_pilot_zone_entries{zone,state}` — gauge, entry count by state (`valid`, `expired`, `updating`)
 - `nginx_cache_pilot_index_max_size_bytes{zone}` — gauge, configured maximum shared-memory cache index size
+- `nginx_cache_pilot_index_alloc_failures_total` — counter, shared-memory allocation failures observed by the index store
+- `nginx_cache_pilot_index_last_bootstrap_at_seconds{zone}` — gauge, Unix epoch timestamp of the last completed bootstrap for the zone
 - `nginx_cache_pilot_index_last_updated_at_seconds{zone}` — gauge, Unix epoch timestamp of the last in-memory index update for the zone
+- `nginx_cache_pilot_index_not_ready{zone,reason}` — gauge, present with value `1` when a configured index is not ready for a specific reason
 - `nginx_cache_pilot_index_state{zone,state}` — gauge, per-zone key index readiness (`0=disabled`, `1=configured`, `2=ready`)
 - `nginx_cache_pilot_index_info{zone,backend}` — info gauge, tag index backend type
 
@@ -792,6 +800,10 @@ Each scenario warms 1000 cached objects, starts 50 keep-alive GET workers, then 
 - purge throughput and latency percentiles
 - `cache_pilot_stats` snapshots before and after the run
 
+Before timed measurement, the indexed wildcard scenario runs a short assist preflight. This verifies the benchmark setup can observe the `wildcard_hits` counter before reporting indexed wildcard throughput. If the preflight cannot prove the assist path, the benchmark records `not-rdy` with preflight diagnostics instead of a misleading `miss-rdy` result. Exact-key fanout remains covered by the regular `Test::Nginx` suite because the throughput workload does not guarantee a fanout sample in every run.
+
+The summary table includes a `Valid` column. `✅ valid` means the row is comparable for the configured scenario, while `❌ invalid` means the observed index result was `not-rdy` or `miss-rdy` and should be treated as a setup/readiness failure rather than a trustworthy performance measurement.
+
 Run the quick suite after building nginx:
 
 ```bash
@@ -799,10 +811,12 @@ make shell
 make nginx-build
 make bench-quick
 make bench
-cat ./bench/results/latest/summary.txt
+cat ./bench/results/latest/summary.md
 ```
 
-Results are written under `bench/results/<timestamp>/` with one JSON file per scenario plus `summary.json`, `summary.txt`, and nginx log artifacts. The `bench/results/latest` symlink points at the most recent run. The runner always creates an aggregated `nginx_error.log` plus per-startup and per-scenario `*_nginx_error.log` files so CI artifact paths stay stable; when nginx emits log output, `bench/bench.pl` also prints that chunk inline and appends it to those files.
+Results are written under `bench/results/<timestamp>/` with one JSON file per scenario plus `summary.json`, `summary.md`, and nginx log artifacts. The `bench/results/latest` symlink points at the most recent run. The runner always creates an aggregated `nginx_error.log` plus per-startup and per-scenario `*_nginx_error.log` files so CI artifact paths stay stable; when nginx emits log output, `bench/bench.pl` also prints that chunk inline and appends it to those files.
+
+On pull requests, the benchmark workflow aggregates the per-nginx-version `summary.json` artifacts and updates a sticky PR comment with a markdown table of the latest results.
 
 The benchmark suite uses a single nginx runtime per run. It renders `bench/nginx.conf`, starts nginx once, and executes all selected scenarios against that runtime.
 

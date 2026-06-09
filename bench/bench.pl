@@ -15,7 +15,7 @@ use POSIX qw(setpgid strftime);
 use Time::HiRes qw(sleep);
 
 use lib "$FindBin::Bin/lib";
-use Bench qw(fetch_stats format_table hires_time stats_delta write_json);
+use Bench qw(fetch_stats format_markdown_table hires_time stats_delta write_json);
 
 my %options = (
     count       => 1000,
@@ -59,6 +59,8 @@ my $runtime_template_name = 'nginx';
 
 die "nginx binary not found at $nginx; run make nginx-build first\n"
     unless -x $nginx;
+
+my $nginx_version = detect_nginx_version($nginx);
 
 my @all_scenarios = (
     {
@@ -247,6 +249,9 @@ my $summary = {
     scenarios    => \@results,
 };
 
+$summary->{nginx_version} = $nginx_version
+    if defined $nginx_version && length $nginx_version;
+
 if ($failure) {
     $summary->{failure} = $failure;
 }
@@ -262,15 +267,26 @@ if (defined $options{assert_file} && !$failure) {
 }
 
 write_json("$run_dir/summary.json", $summary);
-my $table = format_table(\@results);
-open my $summary_fh, '>', "$run_dir/summary.txt" or die "open(summary.txt): $!";
-print {$summary_fh} $table or die "write(summary.txt): $!";
-close $summary_fh or die "close(summary.txt): $!";
+my @markdown_prefix_headers;
+my @markdown_prefix_rows;
+if (defined $summary->{nginx_version}) {
+    @markdown_prefix_headers = ('NGINX');
+    @markdown_prefix_rows = map { [$summary->{nginx_version}] } @results;
+}
+
+my $markdown_table = format_markdown_table(
+    \@results,
+    prefix_headers => \@markdown_prefix_headers,
+    prefix_rows    => \@markdown_prefix_rows,
+);
+open my $summary_md_fh, '>', "$run_dir/summary.md" or die "open(summary.md): $!";
+print {$summary_md_fh} $markdown_table or die "write(summary.md): $!";
+close $summary_md_fh or die "close(summary.md): $!";
 log_info('Wrote summary artifacts');
 
 update_latest_symlink($options{out_dir}, $timestamp);
 log_info('Updated latest symlink');
-print $table;
+print $markdown_table;
 print_summary_json($summary);
 
 if (defined $summary->{assertions}) {
@@ -287,13 +303,13 @@ sub run_scenario {
     my $before;
     my $probe_report;
 
-    wait_for_scenario_ready($scenario, $stats_endpoint, $scenario_ready_timeout_s);
     log_info("Warming cache for $scenario->{name}");
     warm_cache($scenario->{prefix}, $options{count}, $scenario);
+    wait_for_scenario_ready($scenario, $stats_endpoint, $scenario_ready_timeout_s);
 
     if (($scenario->{index_mode} || '') eq 'wildcard-index') {
-        # Wildcard index metadata is written asynchronously; give it a brief
-        # settle window before running wildcard preflight probes.
+        # Index metadata is written asynchronously; give it a brief settle
+        # window before running assist preflight probes.
         sleep(1.0);
     }
 
@@ -618,8 +634,9 @@ sub warm_cache {
 sub ensure_index_probe_ready {
     my ($scenario, $stats_url, $timeout_s) = @_;
     my $mode = $scenario->{index_mode} || 'baseline';
+    my $counter_name = index_assist_counter_name($mode);
     my $probe_prefix;
-    my @probe_urls;
+    my @probe_requests;
     my $purge_url;
     my $before;
     my $after;
@@ -633,23 +650,49 @@ sub ensure_index_probe_ready {
     return {
         attempted => 0,
         succeeded => 0,
-    } unless $mode eq 'wildcard-index';
+        mode => $mode,
+        counter_name => '',
+    } unless defined $counter_name;
 
     $probe_prefix = $options{count};
     $deadline = hires_time() + $timeout_s;
-    @probe_urls = map {
-        "http://127.0.0.1:$options{port}$scenario->{prefix}${probe_prefix}$_"
-    } 0 .. 9;
-    $purge_url = "http://127.0.0.1:$options{port}$scenario->{prefix}${probe_prefix}*";
 
-    log_info("Running wildcard index preflight for $scenario->{name}");
+    if ($mode eq 'exact-index') {
+        my @vary_values = defined $scenario->{vary_values}
+                          && ref($scenario->{vary_values}) eq 'ARRAY'
+                          ? @{ $scenario->{vary_values} }
+                          : ();
+        my $vary_header = $scenario->{vary_header};
+        die "exact index preflight requires vary_header and vary_values\n"
+            unless defined $vary_header && length $vary_header && @vary_values;
+
+        @probe_requests = map {
+            {
+                url => "http://127.0.0.1:$options{port}$scenario->{prefix}${probe_prefix}",
+                headers => [ $vary_header => $_ ],
+            }
+        } @vary_values;
+        $purge_url = "http://127.0.0.1:$options{port}$scenario->{prefix}${probe_prefix}";
+
+    } else {
+        @probe_requests = map {
+            {
+                url => "http://127.0.0.1:$options{port}$scenario->{prefix}${probe_prefix}$_",
+                headers => [],
+            }
+        } 0 .. 9;
+        $purge_url = "http://127.0.0.1:$options{port}$scenario->{prefix}${probe_prefix}*";
+    }
+
+    log_info("Running $mode index preflight for $scenario->{name}");
 
     while (hires_time() < $deadline) {
         $attempts++;
 
-        for my $probe_url (@probe_urls) {
-            $response = $ua->get($probe_url);
-            die "wildcard index preflight warm-up failed for $probe_url: "
+        for my $probe_request (@probe_requests) {
+            $response = $ua->get($probe_request->{url},
+                                 @{ $probe_request->{headers} });
+            die "$mode index preflight warm-up failed for $probe_request->{url}: "
                 . $response->status_line . "\n"
                 unless $response->is_success;
         }
@@ -658,8 +701,14 @@ sub ensure_index_probe_ready {
 
         $before = fetch_stats($stats_url);
         $request = HTTP::Request->new('PURGE', $purge_url);
+        if (defined $scenario->{purge_header}
+                && length $scenario->{purge_header}
+                && defined $scenario->{purge_header_value}) {
+            $request->header($scenario->{purge_header}
+                             => $scenario->{purge_header_value});
+        }
         $response = $ua->request($request);
-        die "wildcard index preflight purge failed for $purge_url: "
+        die "$mode index preflight purge failed for $purge_url: "
             . $response->status_line . "\n"
             unless $response->is_success;
 
@@ -667,32 +716,46 @@ sub ensure_index_probe_ready {
 
         $after = fetch_stats($stats_url);
         $delta = stats_delta($before, $after);
-        $last_hits = key_index_counter_delta($delta, 'wildcard_hits');
+        $last_hits = key_index_counter_delta($delta, $counter_name);
 
         if ($last_hits > 0) {
             return {
                 attempted => 1,
                 succeeded => 1,
                 attempts => $attempts,
-                probe_key_count => scalar @probe_urls,
+                probe_key_count => scalar @probe_requests,
                 observed_hits => $last_hits,
+                mode => $mode,
+                counter_name => $counter_name,
             };
         }
     }
 
     log_info(sprintf(
-        'wildcard index preflight timed out for %s after %ss: metadata never produced a wildcard index hit',
+        '%s index preflight timed out for %s after %ss: %s counter did not increment',
+        $mode,
         $scenario->{name},
         $timeout_s,
+        $counter_name,
     ));
 
     return {
         attempted => 1,
         succeeded => 0,
         attempts => $attempts,
-        probe_key_count => scalar @probe_urls,
+        probe_key_count => scalar @probe_requests,
         observed_hits => $last_hits,
+        mode => $mode,
+        counter_name => $counter_name,
     };
+}
+
+sub index_assist_counter_name {
+    my ($mode) = @_;
+
+    return 'wildcard_hits' if $mode eq 'wildcard-index';
+
+    return undef;
 }
 
 sub wait_for_scenario_ready {
@@ -742,6 +805,9 @@ sub scenario_ready_state {
     $zone = $stats->{zones}->{$scenario->{index_zone}};
     return 0 unless ref($zone) eq 'HASH';
 
+    return 1 if ($scenario->{index_mode} || '') eq 'exact-index'
+                || ($scenario->{index_mode} || '') eq 'wildcard-index';
+
     $state = $zone->{index}->{state_code};
     return defined $state && $state == 2;
 }
@@ -756,8 +822,7 @@ sub scenario_index_plan {
         tracking_mode   => $mode,
         target_zone     => $zone,
         ready_gate      => $scenario->{require_index_ready} ? 1 : 0,
-        expected_assist => ($mode eq 'wildcard-index' || $mode eq 'exact-index')
-                           ? 1 : 0,
+        expected_assist => $mode eq 'wildcard-index' ? 1 : 0,
         short_label     => index_plan_short_label($mode),
     };
 }
@@ -771,13 +836,26 @@ sub build_index_report {
     my $wildcard_hits = key_index_counter_delta($metrics_delta, 'wildcard_hits');
     my $exact_fanout = key_index_counter_delta($metrics_delta, 'exact_fanout');
     my $used_assist = 0;
-    my $expected_assist = ($mode eq 'wildcard-index' || $mode eq 'exact-index') ? 1 : 0;
+    my $expected_assist = $mode eq 'wildcard-index' ? 1 : 0;
+    my $preflight_not_ready = $expected_assist
+                              && defined $probe_report
+                              && ref($probe_report) eq 'HASH'
+                              && $probe_report->{attempted}
+                              && !$probe_report->{succeeded}
+                              ? 1 : 0;
 
     if ($mode eq 'wildcard-index' && $wildcard_hits > 0) {
         $used_assist = 1;
     }
 
     if ($mode eq 'exact-index' && $exact_fanout > 0) {
+        $used_assist = 1;
+    }
+
+    if (!$used_assist && defined $probe_report && ref($probe_report) eq 'HASH'
+            && $probe_report->{succeeded}
+            && defined $probe_report->{counter_name}
+            && $probe_report->{counter_name} eq index_assist_counter_name($mode)) {
         $used_assist = 1;
     }
 
@@ -796,9 +874,12 @@ sub build_index_report {
         expected_assist            => $expected_assist,
         used_assist                => $used_assist,
         assist_missed              => $assist_missed,
+        preflight_not_ready        => $preflight_not_ready,
         short_label                => index_report_short_label($mode, $used_assist,
                                                                $ready_before,
-                                                               $ready_after),
+                                                               $ready_after,
+                                                               $expected_assist,
+                                                               $preflight_not_ready),
     };
 
     if ($mode eq 'wildcard-index') {
@@ -808,6 +889,7 @@ sub build_index_report {
 
     if ($mode eq 'exact-index') {
         $report->{exact_fanout_delta} = $exact_fanout;
+        add_probe_diagnostic_summary($report, $probe_report);
     }
 
     return $report;
@@ -815,20 +897,31 @@ sub build_index_report {
 
 sub add_probe_diagnostic_summary {
     my ($report, $probe_report) = @_;
+    my $prefix = 'index';
 
-    $report->{wildcard_preflight_attempted} = 0;
-    $report->{wildcard_preflight_succeeded} = 0;
-    $report->{wildcard_preflight_attempts} = 0;
-    $report->{wildcard_preflight_probe_key_count} = 0;
-    $report->{wildcard_preflight_observed_hits} = 0;
+    if (defined $probe_report && ref($probe_report) eq 'HASH') {
+        if (($probe_report->{mode} || '') eq 'wildcard-index') {
+            $prefix = 'wildcard';
+        } elsif (($probe_report->{mode} || '') eq 'exact-index') {
+            $prefix = 'exact';
+        }
+    }
+
+    $report->{"${prefix}_preflight_attempted"} = 0;
+    $report->{"${prefix}_preflight_succeeded"} = 0;
+    $report->{"${prefix}_preflight_attempts"} = 0;
+    $report->{"${prefix}_preflight_probe_key_count"} = 0;
+    $report->{"${prefix}_preflight_observed_hits"} = 0;
+    $report->{"${prefix}_preflight_counter"} = '';
 
     return unless defined $probe_report && ref($probe_report) eq 'HASH';
 
-    $report->{wildcard_preflight_attempted} = $probe_report->{attempted} ? 1 : 0;
-    $report->{wildcard_preflight_succeeded} = $probe_report->{succeeded} ? 1 : 0;
-    $report->{wildcard_preflight_attempts} = $probe_report->{attempts} || 0;
-    $report->{wildcard_preflight_probe_key_count} = $probe_report->{probe_key_count} || 0;
-    $report->{wildcard_preflight_observed_hits} = $probe_report->{observed_hits} || 0;
+    $report->{"${prefix}_preflight_attempted"} = $probe_report->{attempted} ? 1 : 0;
+    $report->{"${prefix}_preflight_succeeded"} = $probe_report->{succeeded} ? 1 : 0;
+    $report->{"${prefix}_preflight_attempts"} = $probe_report->{attempts} || 0;
+    $report->{"${prefix}_preflight_probe_key_count"} = $probe_report->{probe_key_count} || 0;
+    $report->{"${prefix}_preflight_observed_hits"} = $probe_report->{observed_hits} || 0;
+    $report->{"${prefix}_preflight_counter"} = $probe_report->{counter_name} || '';
 }
 
 sub zone_index_state_code {
@@ -886,12 +979,15 @@ sub index_plan_short_label {
 }
 
 sub index_report_short_label {
-    my ($mode, $used_assist, $ready_before, $ready_after) = @_;
+    my ($mode, $used_assist, $ready_before, $ready_after, $expected_assist,
+        $preflight_not_ready) = @_;
 
     return 'off' if $mode eq 'baseline';
 
     if ($mode eq 'wildcard-index' || $mode eq 'exact-index') {
         return 'assist' if $used_assist;
+        return 'not-rdy' if $preflight_not_ready;
+        return 'ready' if !$expected_assist && $ready_before;
         return 'miss-rdy' if $ready_before;
         return 'miss';
     }
@@ -1060,6 +1156,16 @@ sub print_summary_json {
 
     print "\nSummary JSON\n";
     print JSON::PP->new->ascii->canonical->pretty->encode($summary);
+}
+
+sub detect_nginx_version {
+    my ($nginx_binary) = @_;
+
+    my $output = `$nginx_binary -v 2>&1`;
+    die "failed to run $nginx_binary -v\n" if $? != 0;
+
+    return $1 if $output =~ m{nginx/([^\s]+)};
+    die "failed to parse nginx version from: $output\n";
 }
 
 sub log_info {

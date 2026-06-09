@@ -53,6 +53,7 @@ typedef struct {
     ngx_uint_t                    protocol;
 
     ngx_uint_t                    resptype;
+    ngx_flag_t                    resptype_configured;
     ngx_flag_t                    cache_index;
     ngx_array_t                  *cache_tag_headers;
     ngx_str_t                     purge_mode_header;
@@ -76,8 +77,20 @@ typedef enum {
     NGX_HTTP_CACHE_PILOT_PURGE_STATS_ALL
 } ngx_http_cache_pilot_purge_stats_e;
 
+typedef enum {
+    NGX_HTTP_CACHE_PILOT_DECLINE_UNSET = 0,
+    NGX_HTTP_CACHE_PILOT_DECLINE_INDEX_NOT_CONFIGURED,
+    NGX_HTTP_CACHE_PILOT_DECLINE_UNSUPPORTED_PLATFORM,
+    NGX_HTTP_CACHE_PILOT_DECLINE_FLUSH_PENDING_FAILED,
+    NGX_HTTP_CACHE_PILOT_DECLINE_ZONE_NOT_REGISTERED,
+    NGX_HTTP_CACHE_PILOT_DECLINE_READER_UNAVAILABLE,
+    NGX_HTTP_CACHE_PILOT_DECLINE_INDEX_NOT_READY,
+    NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND
+} ngx_http_cache_pilot_decline_reason_e;
+
 typedef struct {
     ngx_uint_t                    purge_path;
+    ngx_uint_t                    decline_reason;
     ngx_uint_t                    purged_exact_hard;
     ngx_uint_t                    purged_exact_soft;
     ngx_uint_t                    purged_wildcard_hard;
@@ -106,6 +119,10 @@ typedef struct {
     ngx_str_t              name;
     ngx_http_file_cache_t *cache;
 } ngx_http_cache_pilot_stat_zone_t;
+
+typedef struct {
+    ngx_uint_t             alloc_failures;
+} ngx_http_cache_index_store_stats_t;
 
 typedef struct {
     size_t                                 index_shm_size;
@@ -168,6 +185,8 @@ ngx_flag_t ngx_http_cache_index_location_enabled(
     ngx_http_cache_pilot_loc_conf_t *cplcf);
 void ngx_http_cache_pilot_set_response_path(ngx_http_request_t *r,
         ngx_http_cache_pilot_purge_path_e purge_path);
+void ngx_http_cache_pilot_set_decline_reason(ngx_http_request_t *r,
+        ngx_http_cache_pilot_decline_reason_e reason);
 void ngx_http_cache_pilot_record_response_purge(ngx_http_request_t *r,
         ngx_http_cache_pilot_purge_stats_e purge_type, ngx_flag_t soft,
         ngx_uint_t count);
@@ -215,6 +234,9 @@ ngx_int_t ngx_http_cache_index_store_collect_paths_by_tags(
 ngx_int_t ngx_http_cache_index_store_get_zone_state(
     ngx_http_cache_index_store_t *store, ngx_str_t *zone_name,
     ngx_http_cache_index_zone_state_t *state, ngx_log_t *log);
+ngx_int_t ngx_http_cache_index_store_get_stats(
+    ngx_http_cache_index_store_t *store, ngx_str_t *zone_name,
+    ngx_http_cache_index_store_stats_t *stats, ngx_log_t *log);
 ngx_int_t ngx_http_cache_index_store_set_zone_state(
     ngx_http_cache_index_store_t *store, ngx_str_t *zone_name,
     ngx_http_cache_index_zone_state_t *state, ngx_log_t *log);

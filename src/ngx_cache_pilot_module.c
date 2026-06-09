@@ -69,6 +69,8 @@ static ngx_http_cache_pilot_request_ctx_t *
 ngx_http_cache_pilot_get_request_ctx(ngx_http_request_t *r);
 static ngx_str_t
 ngx_http_cache_pilot_response_path_value(ngx_http_request_t *r);
+static ngx_str_t
+ngx_http_cache_pilot_decline_reason_value(ngx_http_request_t *r);
 static void
 ngx_http_cache_pilot_record_purge(ngx_http_request_t *r,
                                   ngx_http_cache_pilot_purge_stats_e purge_type, ngx_flag_t soft,
@@ -165,6 +167,9 @@ ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
                                      ngx_http_cache_index_zone_t **tag_zone,
                                      ngx_http_cache_index_store_t **reader);
 static ngx_int_t
+ngx_http_cache_pilot_cache_key_text(ngx_pool_t *pool, ngx_http_cache_t *c,
+                                    ngx_str_t *key_text);
+static ngx_int_t
 ngx_http_cache_pilot_by_indexed_path(ngx_http_cache_pilot_index_purge_ctx_t *ctx,
                                      ngx_str_t *path, ngx_flag_t soft);
 static void
@@ -188,6 +193,8 @@ ngx_int_t   ngx_http_cache_pilot_enabled(ngx_http_request_t *r,
         ngx_http_cache_pilot_conf_t *cpcf);
 
 ngx_int_t   ngx_http_cache_pilot_send_response(ngx_http_request_t *r);
+static ngx_int_t ngx_http_cache_pilot_send_decline_response(
+    ngx_http_request_t *r);
 ngx_int_t   ngx_http_cache_pilot_request_mode(ngx_http_request_t *r,
         ngx_flag_t default_soft);
 # if (nginx_version >= 1007009)
@@ -2214,6 +2221,51 @@ ngx_http_cache_pilot_send_response(ngx_http_request_t *r) {
     return ngx_http_output_filter(r, &out);
 }
 
+static ngx_int_t
+ngx_http_cache_pilot_send_decline_response(ngx_http_request_t *r) {
+    ngx_buf_t    *b;
+    ngx_chain_t   out;
+    ngx_int_t     rc;
+    ngx_str_t     reason;
+    u_char       *last;
+    size_t        len;
+
+    reason = ngx_http_cache_pilot_decline_reason_value(r);
+    len = sizeof("{\"cache_pilot\":{\"declined\":true,\"reason\":\"\"}}") - 1
+          + reason.len;
+
+    b = ngx_create_temp_buf(r->pool, len);
+    if (b == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    last = ngx_snprintf(b->last, len,
+                        "{\"cache_pilot\":{\"declined\":true,\"reason\":\"%V\"}}",
+                        &reason);
+    b->last = last;
+    b->last_buf = 1;
+
+    r->headers_out.status = NGX_HTTP_PRECONDITION_FAILED;
+    r->headers_out.content_length_n = b->last - b->pos;
+    r->headers_out.content_type.len = ngx_http_cache_pilot_content_type_json_size - 1;
+    r->headers_out.content_type.data =
+        (u_char *) ngx_http_cache_pilot_content_type_json;
+
+    if (r->method == NGX_HTTP_HEAD) {
+        return ngx_http_send_header(r);
+    }
+
+    out.buf = b;
+    out.next = NULL;
+
+    rc = ngx_http_send_header(r);
+    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+        return rc;
+    }
+
+    return ngx_http_output_filter(r, &out);
+}
+
 void
 ngx_http_cache_pilot_set_response_path(ngx_http_request_t *r,
                                        ngx_http_cache_pilot_purge_path_e purge_path) {
@@ -2225,6 +2277,19 @@ ngx_http_cache_pilot_set_response_path(ngx_http_request_t *r,
     }
 
     ctx->purge_path = purge_path;
+}
+
+void
+ngx_http_cache_pilot_set_decline_reason(ngx_http_request_t *r,
+                                        ngx_http_cache_pilot_decline_reason_e reason) {
+    ngx_http_cache_pilot_request_ctx_t  *ctx;
+
+    ctx = ngx_http_cache_pilot_get_request_ctx(r);
+    if (ctx == NULL) {
+        return;
+    }
+
+    ctx->decline_reason = reason;
 }
 
 void
@@ -2469,6 +2534,35 @@ ngx_http_cache_pilot_response_path_value(ngx_http_request_t *r) {
     return values[ctx->purge_path];
 }
 
+static ngx_str_t
+ngx_http_cache_pilot_decline_reason_value(ngx_http_request_t *r) {
+    static ngx_str_t  values[] = {
+        ngx_null_string,
+        ngx_string("index_not_configured"),
+        ngx_string("unsupported_platform"),
+        ngx_string("flush_pending_failed"),
+        ngx_string("zone_not_registered"),
+        ngx_string("reader_unavailable"),
+        ngx_string("index_not_ready"),
+        ngx_string("not_found")
+    };
+
+    ngx_http_cache_pilot_request_ctx_t  *ctx;
+    ngx_str_t                            reason;
+    ngx_uint_t                           nelts;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_cache_pilot_module);
+    nelts = sizeof(values) / sizeof(values[0]);
+
+    if (ctx == NULL || ctx->decline_reason == NGX_HTTP_CACHE_PILOT_DECLINE_UNSET
+            || ctx->decline_reason >= nelts) {
+        ngx_str_set(&reason, "not_found");
+        return reason;
+    }
+
+    return values[ctx->decline_reason];
+}
+
 static void
 ngx_http_cache_pilot_mark_node_deleted(ngx_http_file_cache_t *cache,
                                        ngx_http_file_cache_node_t *node) {
@@ -2588,6 +2682,43 @@ ngx_http_cache_pilot_by_indexed_path(ngx_http_cache_pilot_index_purge_ctx_t *ctx
 }
 
 static ngx_int_t
+ngx_http_cache_pilot_cache_key_text(ngx_pool_t *pool, ngx_http_cache_t *c,
+                                    ngx_str_t *key_text) {
+    ngx_str_t   *keys;
+    ngx_uint_t   i;
+    size_t       len;
+    u_char      *p;
+
+    key_text->len = 0;
+    key_text->data = NULL;
+
+    if (pool == NULL || c == NULL || c->keys.nelts == 0) {
+        return NGX_DECLINED;
+    }
+
+    keys = c->keys.elts;
+    len = 0;
+    for (i = 0; i < c->keys.nelts; i++) {
+        len += keys[i].len;
+    }
+
+    key_text->data = ngx_pnalloc(pool, len + 1);
+    if (key_text->data == NULL) {
+        return NGX_ERROR;
+    }
+
+    p = key_text->data;
+    for (i = 0; i < c->keys.nelts; i++) {
+        p = ngx_cpymem(p, keys[i].data, keys[i].len);
+    }
+
+    key_text->len = len;
+    key_text->data[len] = '\0';
+
+    return NGX_OK;
+}
+
+static ngx_int_t
 ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
                                      ngx_http_file_cache_t *cache,
                                      ngx_http_cache_pilot_main_conf_t **pmcf,
@@ -2598,19 +2729,27 @@ ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
     *reader = NULL;
 
     if (!ngx_http_cache_index_store_configured(*pmcf)) {
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_INDEX_NOT_CONFIGURED);
         return NGX_DECLINED;
     }
 
 #if !(NGX_LINUX)
     (void) cache;
+    ngx_http_cache_pilot_set_decline_reason(
+        r, NGX_HTTP_CACHE_PILOT_DECLINE_UNSUPPORTED_PLATFORM);
     return NGX_DECLINED;
 #else
     if (ngx_http_cache_index_flush_pending((ngx_cycle_t *) ngx_cycle) != NGX_OK) {
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_FLUSH_PENDING_FAILED);
         return NGX_DECLINED;
     }
 
     *tag_zone = ngx_http_cache_index_lookup_zone(cache);
     if (*tag_zone == NULL) {
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_ZONE_NOT_REGISTERED);
         return NGX_DECLINED;
     }
 
@@ -2618,6 +2757,8 @@ ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
     if (*reader == NULL) {
         *reader = ngx_http_cache_index_store_writer();
         if (*reader == NULL) {
+            ngx_http_cache_pilot_set_decline_reason(
+                r, NGX_HTTP_CACHE_PILOT_DECLINE_READER_UNAVAILABLE);
             return NGX_DECLINED;
         }
     }
@@ -2819,6 +2960,13 @@ ngx_http_cache_pilot_handler(ngx_http_request_t *r) {
         ngx_http_finalize_request(r, ngx_http_cache_pilot_send_response(r));
         return;
     case NGX_DECLINED:
+        if (cplcf->resptype_configured
+                && cplcf->resptype == NGX_RESPONSE_TYPE_JSON) {
+            ngx_http_finalize_request(r,
+                                      ngx_http_cache_pilot_send_decline_response(r));
+            return;
+        }
+
         ngx_http_finalize_request(r, NGX_HTTP_PRECONDITION_FAILED);
         return;
 #  if (NGX_HAVE_FILE_AIO)
@@ -2845,6 +2993,8 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
 #  endif
         break;
     case NGX_DECLINED:
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND);
         return NGX_DECLINED;
 #  if (NGX_HAVE_FILE_AIO)
     case NGX_AGAIN:
@@ -2881,15 +3031,14 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
         /* Key-index fan-out: purge Vary variants sharing the same cache key. */
         if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_m,
                 &index_ctx.zone, &index_ctx.reader) == NGX_OK) {
-            ngx_str_t   *kv, key_text;
+            ngx_str_t    key_text;
             ngx_str_t   *fp;
             ngx_array_t *fan_paths;
             ngx_int_t    purge_rc;
             ngx_uint_t   ki;
 
-            kv = c->keys.elts;
-            if (c->keys.nelts > 0) {
-                key_text = kv[0];
+            if (ngx_http_cache_pilot_cache_key_text(r->pool, c, &key_text)
+                    == NGX_OK) {
                 ngx_http_cache_pilot_delete_index_path(&index_ctx, &c->file.name);
                 fan_paths = NULL;
                 if (ngx_http_cache_index_store_collect_paths_by_exact_key(
@@ -2947,7 +3096,6 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
     ngx_http_cache_index_store_t      *reader;
     ngx_array_t                     *fan_paths;
     ngx_str_t                       *fp;
-    ngx_str_t                       *kv;
     ngx_str_t                        key_text;
     ngx_uint_t                       ki;
     ngx_flag_t                       saw_updating;
@@ -2963,6 +3111,8 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
 #  endif
         break;
     case NGX_DECLINED:
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND);
         return NGX_DECLINED;
 #  if (NGX_HAVE_FILE_AIO)
     case NGX_AGAIN:
@@ -3018,9 +3168,8 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
     pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
     if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_m,
             &tag_zone, &reader) == NGX_OK) {
-        kv = c->keys.elts;
-        if (c->keys.nelts > 0) {
-            key_text = kv[0];
+        if (ngx_http_cache_pilot_cache_key_text(r->pool, c, &key_text)
+                == NGX_OK) {
             fan_paths = NULL;
             if (ngx_http_cache_index_store_collect_paths_by_exact_key(
                         reader, r->pool, &tag_zone->zone_name, &key_text,
@@ -3629,6 +3778,7 @@ ngx_http_cache_pilot_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
     ngx_http_cache_pilot_conf_t      *protocol_conf;
     ngx_http_cache_pilot_conf_t      *prev_protocol_conf;
     ngx_str_t                        *header;
+    ngx_uint_t                        resptype;
 
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
     pmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_cache_pilot_module);
@@ -3640,7 +3790,9 @@ ngx_http_cache_pilot_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child) {
         conf->cache_index = 1;
     }
 
+    resptype = conf->resptype;
     ngx_conf_merge_uint_value(conf->resptype, prev->resptype, NGX_RESPONSE_TYPE_JSON);
+    conf->resptype_configured = resptype != NGX_CONF_UNSET_UINT;
     ngx_conf_merge_value(conf->cache_index, prev->cache_index, 0);
     ngx_conf_merge_str_value(conf->purge_mode_header, prev->purge_mode_header, "");
 

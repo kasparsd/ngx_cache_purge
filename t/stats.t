@@ -121,7 +121,7 @@ GET /_stats?format=json
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: "zones".*"last_updated_at"
+--- response_body_like: "index_store":\{"alloc_failures":[0-9]+\}.*"zones".*"index":\{"state":"[^"]+","state_code":[0-9]+,"max_size":33554432,.*"last_bootstrap_at":[0-9]+,.*"last_updated_at":[0-9]+
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -225,7 +225,12 @@ GET /_stats?format=prometheus
 --- error_code: 200
 --- response_headers
 Content-Type: text/plain; version=0.0.4; charset=utf-8
---- response_body_like: nginx_cache_pilot_purged_entries_total\{type="exact",mode="hard"\}
+--- response_body_like eval
+[
+    '(?s)nginx_cache_pilot_purged_entries_total\{type="exact",mode="hard"\}.*nginx_cache_pilot_index_alloc_failures_total [0-9]+.*nginx_cache_pilot_index_last_bootstrap_at_seconds\{zone="stats_test"\}',
+    '# HELP nginx_cache_pilot_index_not_ready',
+]
+--- response_body_unlike: nginx_cache_pilot_index_alloc_failures_total\{zone=
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
