@@ -158,9 +158,11 @@ sub _summary_row {
     my $index_seen = defined $result->{table_index_observed}
         ? $result->{table_index_observed}
         : '-';
+    my $valid = _validity_label($index_seen);
 
     return [
         @{$prefix_cells || []},
+        $valid,
         $result->{table_name},
         sprintf('%.1f', $result->{get}->{rps} || 0),
         _format_milliseconds($result->{get}->{latency_us}->{p50} || 0),
@@ -173,6 +175,16 @@ sub _summary_row {
     ];
 }
 
+sub _validity_label {
+    my ($index_seen) = @_;
+
+    return '❌ invalid'
+        if defined $index_seen && ($index_seen eq 'not-rdy'
+                                  || $index_seen eq 'miss-rdy');
+
+    return '✅ valid';
+}
+
 sub format_markdown_table {
     my ($results, %options) = @_;
 
@@ -180,6 +192,7 @@ sub format_markdown_table {
     my @prefix_rows = @{ $options{prefix_rows} || [] };
     my @headers = (
         @prefix_headers,
+        'Valid',
         'Scenario',
         'GET rps',
         'p50',
@@ -206,10 +219,10 @@ sub format_markdown_table {
 sub format_table {
     my ($results) = @_;
     my @lines = (
-        sprintf('%-22s %8s %7s %7s %7s %6s %7s %8s %9s',
-            'Scenario', 'GET rps', 'p50', 'p95', 'p99', 'Hit%', 'Purges',
+        sprintf('%-9s %-22s %8s %7s %7s %7s %6s %7s %8s %9s',
+            'Valid', 'Scenario', 'GET rps', 'p50', 'p95', 'p99', 'Hit%', 'Purges',
             'IdxPlan', 'IdxSeen'),
-        '-' x 98,
+        '-' x 108,
     );
 
     for my $result (@{$results}) {
@@ -219,8 +232,10 @@ sub format_table {
         my $index_seen = defined $result->{table_index_observed}
             ? $result->{table_index_observed}
             : '-';
+        my $valid = _validity_label($index_seen);
 
-        push @lines, sprintf('%-22s %8.1f %7s %7s %7s %6s %7d %8s %9s',
+        push @lines, sprintf('%-9s %-22s %8.1f %7s %7s %7s %6s %7d %8s %9s',
+            $valid,
             $result->{table_name},
             $result->{get}->{rps} || 0,
             _format_milliseconds($result->{get}->{latency_us}->{p50} || 0),

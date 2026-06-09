@@ -802,6 +802,8 @@ Each scenario warms 1000 cached objects, starts 50 keep-alive GET workers, then 
 
 Before timed measurement, the indexed wildcard scenario runs a short assist preflight. This verifies the benchmark setup can observe the `wildcard_hits` counter before reporting indexed wildcard throughput. If the preflight cannot prove the assist path, the benchmark records `not-rdy` with preflight diagnostics instead of a misleading `miss-rdy` result. Exact-key fanout remains covered by the regular `Test::Nginx` suite because the throughput workload does not guarantee a fanout sample in every run.
 
+The summary table includes a `Valid` column. `✅ valid` means the row is comparable for the configured scenario, while `❌ invalid` means the observed index result was `not-rdy` or `miss-rdy` and should be treated as a setup/readiness failure rather than a trustworthy performance measurement.
+
 Run the quick suite after building nginx:
 
 ```bash
