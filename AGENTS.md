@@ -3,6 +3,7 @@
 ## Coding style
 
 - Follow the Nginx core development guide https://nginx.org/en/docs/dev/development_guide.html
+- Follow established pattern of CI steps -- ensure all steps can be run locally and are composed of existing tools. Update or introduce tools that can be used for composing the CI steps.
 
 ## Verifying changes
 
