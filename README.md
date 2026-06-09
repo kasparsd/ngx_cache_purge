@@ -800,6 +800,8 @@ Each scenario warms 1000 cached objects, starts 50 keep-alive GET workers, then 
 - purge throughput and latency percentiles
 - `cache_pilot_stats` snapshots before and after the run
 
+Before timed measurement, the indexed wildcard scenario runs a short assist preflight. This verifies the benchmark setup can observe the `wildcard_hits` counter before reporting indexed wildcard throughput. If the preflight cannot prove the assist path, the benchmark records `not-rdy` with preflight diagnostics instead of a misleading `miss-rdy` result. Exact-key fanout remains covered by the regular `Test::Nginx` suite because the throughput workload does not guarantee a fanout sample in every run.
+
 Run the quick suite after building nginx:
 
 ```bash

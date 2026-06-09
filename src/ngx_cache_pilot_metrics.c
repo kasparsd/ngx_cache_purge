@@ -138,9 +138,8 @@ ngx_http_cache_pilot_snapshot_zone(ngx_http_cache_pilot_stat_zone_t *sz,
                     &snap->index_stats, ngx_cycle->log);
         }
 
-        if ((ngx_http_cache_index_lookup_zone(cache) != NULL && reader != NULL)
-                || ngx_http_cache_index_zone_bootstrap_complete_sync(pmcf, cache,
-                        ngx_cycle->log)) {
+        if (ngx_http_cache_index_lookup_zone(cache) != NULL && reader != NULL
+                && state.bootstrap_complete) {
             snap->index_state = NGX_CACHE_PILOT_INDEX_STATE_READY;
             snap->index_not_ready_reason = NULL;
         } else if (reader != NULL && ngx_http_cache_index_lookup_zone(cache) == NULL) {

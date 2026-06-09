@@ -167,6 +167,9 @@ ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
                                      ngx_http_cache_index_zone_t **tag_zone,
                                      ngx_http_cache_index_store_t **reader);
 static ngx_int_t
+ngx_http_cache_pilot_cache_key_text(ngx_pool_t *pool, ngx_http_cache_t *c,
+                                    ngx_str_t *key_text);
+static ngx_int_t
 ngx_http_cache_pilot_by_indexed_path(ngx_http_cache_pilot_index_purge_ctx_t *ctx,
                                      ngx_str_t *path, ngx_flag_t soft);
 static void
@@ -2679,6 +2682,43 @@ ngx_http_cache_pilot_by_indexed_path(ngx_http_cache_pilot_index_purge_ctx_t *ctx
 }
 
 static ngx_int_t
+ngx_http_cache_pilot_cache_key_text(ngx_pool_t *pool, ngx_http_cache_t *c,
+                                    ngx_str_t *key_text) {
+    ngx_str_t   *keys;
+    ngx_uint_t   i;
+    size_t       len;
+    u_char      *p;
+
+    key_text->len = 0;
+    key_text->data = NULL;
+
+    if (pool == NULL || c == NULL || c->keys.nelts == 0) {
+        return NGX_DECLINED;
+    }
+
+    keys = c->keys.elts;
+    len = 0;
+    for (i = 0; i < c->keys.nelts; i++) {
+        len += keys[i].len;
+    }
+
+    key_text->data = ngx_pnalloc(pool, len + 1);
+    if (key_text->data == NULL) {
+        return NGX_ERROR;
+    }
+
+    p = key_text->data;
+    for (i = 0; i < c->keys.nelts; i++) {
+        p = ngx_cpymem(p, keys[i].data, keys[i].len);
+    }
+
+    key_text->len = len;
+    key_text->data[len] = '\0';
+
+    return NGX_OK;
+}
+
+static ngx_int_t
 ngx_http_cache_pilot_key_index_ready(ngx_http_request_t *r,
                                      ngx_http_file_cache_t *cache,
                                      ngx_http_cache_pilot_main_conf_t **pmcf,
@@ -2991,15 +3031,14 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
         /* Key-index fan-out: purge Vary variants sharing the same cache key. */
         if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_m,
                 &index_ctx.zone, &index_ctx.reader) == NGX_OK) {
-            ngx_str_t   *kv, key_text;
+            ngx_str_t    key_text;
             ngx_str_t   *fp;
             ngx_array_t *fan_paths;
             ngx_int_t    purge_rc;
             ngx_uint_t   ki;
 
-            kv = c->keys.elts;
-            if (c->keys.nelts > 0) {
-                key_text = kv[0];
+            if (ngx_http_cache_pilot_cache_key_text(r->pool, c, &key_text)
+                    == NGX_OK) {
                 ngx_http_cache_pilot_delete_index_path(&index_ctx, &c->file.name);
                 fan_paths = NULL;
                 if (ngx_http_cache_index_store_collect_paths_by_exact_key(
@@ -3057,7 +3096,6 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
     ngx_http_cache_index_store_t      *reader;
     ngx_array_t                     *fan_paths;
     ngx_str_t                       *fp;
-    ngx_str_t                       *kv;
     ngx_str_t                        key_text;
     ngx_uint_t                       ki;
     ngx_flag_t                       saw_updating;
@@ -3130,9 +3168,8 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
     pmcf_m = ngx_http_get_module_main_conf(r, ngx_http_cache_pilot_module);
     if (ngx_http_cache_pilot_key_index_ready(r, cache, &pmcf_m,
             &tag_zone, &reader) == NGX_OK) {
-        kv = c->keys.elts;
-        if (c->keys.nelts > 0) {
-            key_text = kv[0];
+        if (ngx_http_cache_pilot_cache_key_text(r->pool, c, &key_text)
+                == NGX_OK) {
             fan_paths = NULL;
             if (ngx_http_cache_index_store_collect_paths_by_exact_key(
                         reader, r->pool, &tag_zone->zone_name, &key_text,
