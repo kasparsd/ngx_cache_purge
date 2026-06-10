@@ -9,7 +9,6 @@ use File::Temp qw(tempdir);
 use FindBin;
 use Getopt::Long qw(GetOptions);
 use HTTP::Request;
-use JSON::PP ();
 use LWP::UserAgent;
 use POSIX qw(setpgid strftime);
 use Time::HiRes qw(sleep);
@@ -41,6 +40,7 @@ die "--concurrency must be > 0\n" unless $options{concurrency} > 0;
 
 my $duration = $options{quick} ? 15 : 60;
 my $index_probe_timeout_s = 15;
+my $index_settle_delay_s = 1;
 my $scenario_ready_timeout_s = 10;
 my $perl = $^X;
 my $nginx = '/opt/nginx/sbin/nginx';
@@ -307,14 +307,25 @@ sub run_scenario {
     warm_cache($scenario->{prefix}, $options{count}, $scenario);
     wait_for_scenario_ready($scenario, $stats_endpoint, $scenario_ready_timeout_s);
 
-    if (($scenario->{index_mode} || '') eq 'wildcard-index') {
+    if (($scenario->{index_mode} || '') eq 'wildcard-index'
+            && $index_settle_delay_s > 0) {
         # Index metadata is written asynchronously; give it a brief settle
         # window before running assist preflight probes.
-        sleep(1.0);
+        log_info("Waiting ${index_settle_delay_s}s for wildcard index metadata to settle");
+        sleep($index_settle_delay_s);
     }
 
     $probe_report = ensure_index_probe_ready($scenario, $stats_endpoint,
                                              $index_probe_timeout_s);
+
+    if (($scenario->{index_mode} || '') eq 'wildcard-index') {
+        log_info("Re-warming cache for $scenario->{name} after wildcard index preflight");
+        warm_cache($scenario->{prefix}, $options{count}, $scenario);
+        if ($index_settle_delay_s > 0) {
+            log_info("Waiting ${index_settle_delay_s}s for wildcard index metadata to settle after re-warm");
+            sleep($index_settle_delay_s);
+        }
+    }
 
     log_info("Fetching baseline stats for $scenario->{name}");
     $before = fetch_stats($stats_endpoint);
@@ -644,6 +655,7 @@ sub ensure_index_probe_ready {
     my $request;
     my $response;
     my $deadline;
+    my $attempt_probe_prefix;
     my $attempts = 0;
     my $last_hits = 0;
 
@@ -673,21 +685,23 @@ sub ensure_index_probe_ready {
             }
         } @vary_values;
         $purge_url = "http://127.0.0.1:$options{port}$scenario->{prefix}${probe_prefix}";
-
-    } else {
-        @probe_requests = map {
-            {
-                url => "http://127.0.0.1:$options{port}$scenario->{prefix}${probe_prefix}$_",
-                headers => [],
-            }
-        } 0 .. 9;
-        $purge_url = "http://127.0.0.1:$options{port}$scenario->{prefix}${probe_prefix}*";
     }
 
     log_info("Running $mode index preflight for $scenario->{name}");
 
     while (hires_time() < $deadline) {
         $attempts++;
+
+        if ($mode eq 'wildcard-index') {
+            $attempt_probe_prefix = $probe_prefix + $attempts - 1;
+            @probe_requests = map {
+                {
+                    url => "http://127.0.0.1:$options{port}$scenario->{prefix}${attempt_probe_prefix}$_",
+                    headers => [],
+                }
+            } 0 .. 9;
+            $purge_url = "http://127.0.0.1:$options{port}$scenario->{prefix}${attempt_probe_prefix}*";
+        }
 
         for my $probe_request (@probe_requests) {
             $response = $ua->get($probe_request->{url},
