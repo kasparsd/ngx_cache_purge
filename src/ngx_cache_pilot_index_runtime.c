@@ -126,10 +126,6 @@ ngx_http_cache_pilot_index_header_filter(ngx_http_request_t *r) {
         return NGX_ERROR;
     }
 
-    if (tags->nelts == 0) {
-        goto done;
-    }
-
     ctx = ngx_http_get_module_ctx(r, ngx_http_cache_pilot_module);
     if (ctx == NULL) {
         ctx = ngx_pcalloc(r->pool, sizeof(*ctx));
@@ -154,9 +150,10 @@ done:
  * Log phase handler: commit the SHM index entry for a freshly written cache
  * file.  Runs after the response is sent; the SHM write is in-memory and fast.
  *
- * We only proceed if the request context was stashed in the header filter,
- * which happens only for cacheable upstream responses - so we naturally skip
- * cache hits, purge requests, and any request that did not write a cache file.
+ * The header filter normally stashes the request context for cacheable upstream
+ * responses.  Some no-tag cache writes can reach log phase without that
+ * context, so the log handler can lazily recover the index zone and empty tag
+ * set from the request before writing metadata.
  *
  * If the upstream response turned out to be non-cacheable despite the initial
  * header verdict (e.g. a downstream filter cleared cacheable), we silently
@@ -165,20 +162,50 @@ done:
 static ngx_int_t
 ngx_http_cache_pilot_index_log_handler(ngx_http_request_t *r) {
 #if (NGX_LINUX)
+    ngx_http_cache_pilot_loc_conf_t  *cplcf;
     ngx_http_cache_pilot_request_ctx_t *ctx;
     ngx_http_cache_index_store_t     *writer;
+    ngx_http_cache_index_zone_t      *zone;
+    ngx_array_t                      *tags;
     ngx_str_t                         cache_key;
     ngx_str_t                        *key_parts;
+    ngx_str_t                         zone_name;
     size_t                            key_len;
     ngx_uint_t                        i;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_cache_pilot_module);
-    if (ctx == NULL || ctx->index_tags == NULL || ctx->index_tags->nelts == 0) {
+    if (r->cache == NULL || r->cache->file.name.len == 0) {
         return NGX_OK;
     }
 
-    if (r->cache == NULL || r->cache->file.name.len == 0) {
-        return NGX_OK;
+    tags = NULL;
+    ngx_str_null(&zone_name);
+
+    if (ctx != NULL && ctx->index_tags != NULL) {
+        tags = ctx->index_tags;
+        zone_name = ctx->index_zone_name;
+    } else {
+        if (r->upstream != NULL
+                && r->upstream->cache_status == NGX_HTTP_CACHE_HIT) {
+            return NGX_OK;
+        }
+
+        cplcf = ngx_http_get_module_loc_conf(r, ngx_http_cache_pilot_module);
+        if (!ngx_http_cache_index_location_enabled(cplcf)) {
+            return NGX_OK;
+        }
+
+        zone = ngx_http_cache_index_lookup_zone(r->cache->file_cache);
+        if (zone == NULL) {
+            return NGX_OK;
+        }
+
+        if (ngx_http_cache_pilot_index_response_headers(r, cplcf, &tags)
+                != NGX_OK) {
+            return NGX_OK;
+        }
+
+        zone_name = zone->zone_name;
     }
 
     writer = ngx_http_cache_index_store_writer();
@@ -209,11 +236,11 @@ ngx_http_cache_pilot_index_log_handler(ngx_http_request_t *r) {
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "cache_tag index update zone:\"%V\" path:\"%V\"",
-                   &ctx->index_zone_name, &r->cache->file.name);
+                   &zone_name, &r->cache->file.name);
 
-    if (ngx_http_cache_index_store_upsert_file_meta(writer, &ctx->index_zone_name,
+    if (ngx_http_cache_index_store_upsert_file_meta(writer, &zone_name,
             &r->cache->file.name, &cache_key,
-            ngx_time(), 0, ctx->index_tags, r->connection->log) != NGX_OK) {
+            ngx_time(), 0, tags, r->connection->log) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "cache_tag index update failed for \"%V\"",
                       &r->cache->file.name);
