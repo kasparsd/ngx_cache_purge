@@ -9,6 +9,7 @@ use File::Temp qw(tempdir);
 use FindBin;
 use Getopt::Long qw(GetOptions);
 use HTTP::Request;
+use JSON::PP ();
 use LWP::UserAgent;
 use POSIX qw(setpgid strftime);
 use Time::HiRes qw(sleep);
@@ -40,7 +41,6 @@ die "--concurrency must be > 0\n" unless $options{concurrency} > 0;
 
 my $duration = $options{quick} ? 15 : 60;
 my $index_probe_timeout_s = 15;
-my $index_settle_delay_s = 1;
 my $scenario_ready_timeout_s = 10;
 my $perl = $^X;
 my $nginx = '/opt/nginx/sbin/nginx';
@@ -307,25 +307,8 @@ sub run_scenario {
     warm_cache($scenario->{prefix}, $options{count}, $scenario);
     wait_for_scenario_ready($scenario, $stats_endpoint, $scenario_ready_timeout_s);
 
-    if (($scenario->{index_mode} || '') eq 'wildcard-index'
-            && $index_settle_delay_s > 0) {
-        # Index metadata is written asynchronously; give it a brief settle
-        # window before running assist preflight probes.
-        log_info("Waiting ${index_settle_delay_s}s for wildcard index metadata to settle");
-        sleep($index_settle_delay_s);
-    }
-
     $probe_report = ensure_index_probe_ready($scenario, $stats_endpoint,
                                              $index_probe_timeout_s);
-
-    if (($scenario->{index_mode} || '') eq 'wildcard-index') {
-        log_info("Re-warming cache for $scenario->{name} after wildcard index preflight");
-        warm_cache($scenario->{prefix}, $options{count}, $scenario);
-        if ($index_settle_delay_s > 0) {
-            log_info("Waiting ${index_settle_delay_s}s for wildcard index metadata to settle after re-warm");
-            sleep($index_settle_delay_s);
-        }
-    }
 
     log_info("Fetching baseline stats for $scenario->{name}");
     $before = fetch_stats($stats_endpoint);
