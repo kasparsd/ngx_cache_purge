@@ -623,10 +623,10 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 X-Variant: a
 --- request
 PURGE /proxy_json/vary
---- error_code: 412
+--- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: ^\{"cache_pilot":\{"declined":true,"reason":"not_found"\}\}$
+--- response_body_like: ^\{\"key\": \"\/proxy_json\/vary\", \"cache_pilot\": \{\"purged\": \{\"exact\": \{\"hard\": 0, \"soft\": 0\}, \"wildcard\": \{\"hard\": 0, \"soft\": 0\}, \"tag\": \{\"hard\": 0, \"soft\": 0\}, \"all\": \{\"hard\": 0, \"soft\": 0\}\}\}\}$
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -752,6 +752,3 @@ X-Cache-Status: MISS
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
-
-
-

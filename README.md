@@ -330,6 +330,8 @@ Set the response type returned after a purge.
 
 When `json` is selected, successful purges may also include `cache_pilot.purge_path` to describe the request path that completed the purge, for example `filesystem-fallback`, `key-prefix-index`, `reused-persisted-index`, or `exact-key-fanout`. Here, `reused-persisted-index` means the request reused shared-memory index state that was already built for the current nginx lifetime; it does not imply on-disk persistence. JSON responses also include `cache_pilot.purged`, using the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts to report how many cache entries that purge request removed or expired. Text responses keep existing plain body format.
 
+Purges are idempotent when no matching cache entry is found: the module returns the normal successful purge response with zero `purged` counters. This is a breaking change from older releases that returned `412 Precondition Failed` for cache misses. Operational declines such as an unavailable cache-tag index, an unregistered index zone, or an unsupported platform still fail so automation can distinguish "nothing was cached" from "the purge path could not run".
+
 #### `cache_pilot_purge_mode_header`
 
 - **syntax**: `cache_pilot_purge_mode_header <header>`
@@ -503,7 +505,7 @@ location /_cache_stats {
 
 Additional zones are omitted for brevity.
 
-`zones.<zone>.max_size` reports the configured NGINX cache zone limit. When the in-memory index is enabled, `index.max_size` reports the configured `cache_pilot_index_zone_size` shared-memory limit for the index, `index.last_bootstrap_at` reports the Unix epoch timestamp of the last completed bootstrap, and `index.last_updated_at` reports the Unix epoch timestamp of the last index mutation observed for that zone. `index_store.alloc_failures` reports shared-memory allocation failures observed by the index store. `index.not_ready_reason` is present when the index is configured but not ready, with values such as `reader_unavailable`, `zone_not_registered`, or `index_not_ready`. `index` is omitted when the in-memory index is unavailable. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `index.backend` is currently always `"shm"`. `purges` counters are global across all zones and survive `nginx -s reload`. `purged` uses the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts for cumulative cache entries removed or expired by each purge path.
+`zones.<zone>.max_size` reports the configured NGINX cache zone limit. When the in-memory index is enabled, `index.max_size` reports the configured `cache_pilot_index_zone_size` shared-memory limit for the index, `index.last_bootstrap_at` reports the Unix epoch timestamp of the last completed bootstrap, and `index.last_updated_at` reports the Unix epoch timestamp of the last index mutation observed for that zone. `index_store.alloc_failures` reports shared-memory allocation failures observed by the index store. `index.not_ready_reason` is present when the index is configured but not ready, with values such as `reader_unavailable`, `zone_not_registered`, or `index_not_ready`. `index` is omitted when the in-memory index is unavailable. `index.state_code` uses `0=disabled`, `1=configured`, and `2=ready`. `index.backend` is currently always `"shm"`. `purges` counters are global across all zones, survive `nginx -s reload`, and include accepted purge operations that match zero cache entries. `purged` uses the same `exact`, `wildcard`, `tag`, and `all` buckets with `hard` and `soft` counts for cumulative cache entries removed or expired by each purge path.
 
 **Prometheus metrics** (prefix `nginx_cache_pilot_`):
 
@@ -592,6 +594,8 @@ curl -i -X PURGE -H 'Cache-Tag: article-42, group-a' -H 'X-Purge-Mode: soft' 'ht
 All supplied tags are matched with OR semantics. If any cached file is indexed under any supplied tag, it will be purged.
 
 If a watched purge location receives a plain `PURGE` request without any of the configured tag headers, the module falls back to the normal key-based purge behavior for that location.
+
+If no cache files currently match the supplied tags, the purge still returns the normal successful purge response with zero `purged` counters.
 
 For tag-based purges, the configured `cache_pilot_purge_mode_header` can switch a request between soft and hard purge. Without that header, the configured purge mode is used.
 

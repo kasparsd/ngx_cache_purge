@@ -5,7 +5,7 @@ use Test::Nginx::Socket;
 
 repeat_each(1);
 
-plan tests => repeat_each() * 167;
+plan tests => repeat_each() * 171;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_cache keys_zone=test_cache:10m;
@@ -359,6 +359,23 @@ GET /proxy/c
 --- response_headers
 X-Cache-Status: MISS
 --- response_body: origin-c
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 3b: surrogate-key purge with no matching tag is idempotent
+--- http_config eval: $::http_config
+--- config eval: $::config_soft
+--- request
+PURGE /proxy/a
+--- more_headers
+Surrogate-Key: group-missing
+--- error_code: 200
+--- response_headers
+Content-Type: application/json
+--- response_body_like: ^\{\"key\": \"\/proxy\/a\", \"cache_pilot\": \{\"purged\": \{\"exact\": \{\"hard\": 0, \"soft\": 0\}, \"wildcard\": \{\"hard\": 0, \"soft\": 0\}, \"tag\": \{\"hard\": 0, \"soft\": 0\}, \"all\": \{\"hard\": 0, \"soft\": 0\}\}\}\}$
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
