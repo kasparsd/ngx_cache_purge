@@ -2573,7 +2573,7 @@ ngx_http_cache_pilot_decline_reason_value(ngx_http_request_t *r) {
 
     if (ctx == NULL || ctx->decline_reason == NGX_HTTP_CACHE_PILOT_DECLINE_UNSET
             || ctx->decline_reason >= nelts) {
-        ngx_str_set(&reason, "not_found");
+        ngx_str_set(&reason, "unknown");
         return reason;
     }
 
@@ -2587,7 +2587,7 @@ ngx_http_cache_pilot_decline_reason(ngx_http_request_t *r) {
     ctx = ngx_http_get_module_ctx(r, ngx_http_cache_pilot_module);
     if (ctx == NULL
             || ctx->decline_reason == NGX_HTTP_CACHE_PILOT_DECLINE_UNSET) {
-        return NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND;
+        return NGX_HTTP_CACHE_PILOT_DECLINE_UNSET;
     }
 
     return ctx->decline_reason;
@@ -2992,6 +2992,8 @@ ngx_http_cache_pilot_handler(ngx_http_request_t *r) {
     case NGX_DECLINED:
         if (ngx_http_cache_pilot_decline_reason(r)
                 == NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND) {
+            ngx_http_cache_pilot_record_purge_request(
+                r, NGX_HTTP_CACHE_PILOT_PURGE_STATS_EXACT, mode);
             ngx_http_finalize_request(r, ngx_http_cache_pilot_send_response(r));
             return;
         }
@@ -3045,6 +3047,8 @@ ngx_http_cache_pilot_exact_purge(ngx_http_request_t *r) {
 
     if (ngx_http_cache_pilot_delete_opened_file(cache, c, r->connection->log)
             == NGX_DECLINED) {
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND);
         return NGX_DECLINED;
     }
 
@@ -3173,6 +3177,8 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
 
     if (!c->node->exists) {
         ngx_shmtx_unlock(&cache->shpool->mutex);
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND);
         return NGX_DECLINED;
     }
 
@@ -3183,6 +3189,11 @@ ngx_http_cache_pilot_exact_purge_soft(ngx_http_request_t *r) {
      * fails, the SHM node is left untouched so SHM and disk stay consistent.
      */
     rc = ngx_http_cache_pilot_soft_header(&c->file.name, r->connection->log);
+    if (rc == NGX_DECLINED) {
+        ngx_http_cache_pilot_set_decline_reason(
+            r, NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND);
+    }
+
     if (rc != NGX_OK) {
         return rc;
     }

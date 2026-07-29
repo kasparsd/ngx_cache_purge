@@ -5,7 +5,7 @@ use Test::Nginx::Socket;
 
 repeat_each(1);
 
-plan tests => repeat_each() * 92;
+plan tests => repeat_each() * 98;
 
 our $http_config = <<'_EOC_';
     proxy_cache_path  /tmp/ngx_cache_pilot_stats_cache  keys_zone=stats_test:10m;
@@ -27,6 +27,12 @@ our $config = <<'_EOC_';
         proxy_cache        stats_test;
         proxy_cache_key    $1$is_args$args;
         proxy_cache_purge  1;
+    }
+
+    location ~ /purge_soft(/.*) {
+        proxy_cache        stats_test;
+        proxy_cache_key    $1$is_args$args;
+        proxy_cache_purge  1 soft;
     }
 
     location /proxy_walk {
@@ -210,6 +216,27 @@ qr/\[(warn|error|crit|alert|emerg)\]/
     'root',
     '{"key": ',
     '"exact":\{"hard":[1-9].*"purged":\{"exact":\{"hard":[1-9][0-9]*,"soft":0\},"wildcard":\{"hard":0,"soft":0\},"tag":\{"hard":0,"soft":0\},"all":\{"hard":0,"soft":0\}\}',
+]
+--- timeout: 10
+--- no_error_log eval
+qr/\[(warn|error|crit|alert|emerg)\]/
+
+
+
+=== TEST 11: accepted exact soft miss increments operation counter only
+--- http_config eval: $::http_config
+--- config eval: $::config
+--- request eval
+[
+    'PURGE /purge_soft/missing?t=stats-soft-miss',
+    'GET /_stats',
+]
+--- error_code eval
+[200, 200]
+--- response_body_like eval
+[
+    '"purged": \{"exact": \{"hard": 0, "soft": 0\}',
+    '"purges":\{"exact":\{"hard":0,"soft":1\}.*"purged":\{"exact":\{"hard":0,"soft":0\}',
 ]
 --- timeout: 10
 --- no_error_log eval
