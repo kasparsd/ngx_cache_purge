@@ -39,6 +39,7 @@
 - `cache_pilot_purge_mode_header` values `soft`, `true`, or `1` only switch soft versus hard purge mode after a purge request has already matched; they do not enable purge conditionally.
 - `purge_all` uses the configured `soft` flag and does not honor `cache_pilot_purge_mode_header`.
 
-## README hygiene
+## Documentation
 
-After any change that affects user-visible behaviour, known limitations, configuration options, or the public API, **review `README.md` and update it** to reflect the current state before closing the task. Pay particular attention to the **Known issues** section, which documents known limitations — keep each entry accurate and up to date.
+- After any change that affects user-visible behaviour, known limitations, configuration options, or the public API, **review `README.md` and update it** to reflect the current state before closing the task. Pay particular attention to the **Known issues** section, which documents known limitations — keep each entry accurate and up to date.
+- Before completing work, review `CHANGELOG.md` and add every notable user-visible change, fix, packaging change, or release-tooling change to `UNRELEASED`. During release preparation, move those entries into a dated version section and keep the top `debian/changelog` version and notes aligned with the Git tag and GitHub release because packaging tools derive the source package version from that file.
