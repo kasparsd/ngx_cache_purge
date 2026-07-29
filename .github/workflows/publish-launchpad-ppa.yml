@@ -1,6 +1,9 @@
 name: Publish Launchpad PPA
 
 on:
+  push:
+    tags:
+      - '[0-9]*.[0-9]*.[0-9]*'
   workflow_dispatch:
     inputs:
       ppa_revision:
@@ -27,6 +30,10 @@ jobs:
       - name: Pull packaging image
         continue-on-error: true
         run: docker compose pull packaging
+
+      - name: Verify tagged release version
+        if: github.ref_type == 'tag'
+        run: docker compose run --rm packaging make debian-release-version-check RELEASE_VERSION="${GITHUB_REF_NAME}"
 
       - name: Build shared source tarball
         run: docker compose run --rm packaging make debian-orig-tarball
@@ -79,7 +86,7 @@ jobs:
             -e LAUNCHPAD_PPA \
             packaging make launchpad-ppa-upload \
               DEBIAN_DISTRIBUTION=${{ matrix.series }} \
-              DEBIAN_VERSION_SUFFIX=+ppa${PPA_REVISION}~${{ matrix.series_suffix }}
+              DEBIAN_VERSION_SUFFIX="+ppa${PPA_REVISION}~${{ matrix.series_suffix }}"
 
       - name: Upload source package artifacts
         if: always()

@@ -9,13 +9,14 @@ DEBIAN_SOURCE_PACKAGE ?= libnginx-mod-http-cache-pilot
 DEBIAN_DISTRIBUTION ?=
 DEBIAN_VERSION_SUFFIX ?=
 LAUNCHPAD_PPA ?= ppa:wpelevator/packages
+RELEASE_VERSION ?=
 
 DEBIAN_PACKAGE_VERSION = $(shell dpkg-parsechangelog -l "$(CURDIR)/debian/changelog" -SVersion)
 DEBIAN_UPSTREAM_VERSION = $(shell printf '%s\n' "$(DEBIAN_PACKAGE_VERSION)" | sed 's/-[^-]*$$//')
 DEBIAN_SOURCE_DIR = $(DEBIAN_BUILD_ROOT)/$(DEBIAN_SOURCE_PACKAGE)-$(DEBIAN_UPSTREAM_VERSION)
 DEBIAN_ORIG_TARBALL = $(DEBIAN_BUILD_ROOT)/$(DEBIAN_SOURCE_PACKAGE)_$(DEBIAN_UPSTREAM_VERSION).orig.tar.gz
 
-.PHONY: help image shell packaging-shell nginx-build nginx-build-dynamic nginx-version format test bench bench-quick debian-package debian-package-smoke debian-package-clean debian-source-tree debian-orig-tarball debian-source-package debian-source-package-signed launchpad-ppa-upload
+.PHONY: help image shell packaging-shell nginx-build nginx-build-dynamic nginx-version format test bench bench-quick debian-package debian-package-smoke debian-package-clean debian-release-version-check debian-source-tree debian-orig-tarball debian-source-package debian-source-package-signed launchpad-ppa-upload
 
 help:
 	@printf '%s\n' \
@@ -28,6 +29,7 @@ help:
 		'make test                Run the Test::Nginx suite' \
 		'make debian-package      Build Debian source and binary packages under .pkg-build/' \
 		'make debian-package-smoke Build Debian packages and run debian/tests/smoke' \
+		'make debian-release-version-check Verify RELEASE_VERSION matches debian/changelog' \
 		'make debian-orig-tarball Build Debian upstream orig tarball under .pkg-build/' \
 		'make debian-source-package Build unsigned Debian source package under .pkg-build/' \
 		'make debian-source-package-signed Build signed Debian source package under .pkg-build/' \
@@ -87,6 +89,11 @@ bench-quick: nginx-build
 
 debian-package-clean:
 	rm -rf "$(DEBIAN_BUILD_ROOT)"
+
+debian-release-version-check:
+	@test -n "$(RELEASE_VERSION)" || { echo "RELEASE_VERSION is required"; exit 1; }
+	@printf '%s\n' "$(RELEASE_VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "RELEASE_VERSION must be a plain semantic version"; exit 1; }
+	@test "$(RELEASE_VERSION)" = "$(DEBIAN_UPSTREAM_VERSION)" || { echo "Release version $(RELEASE_VERSION) does not match debian/changelog upstream version $(DEBIAN_UPSTREAM_VERSION)"; exit 1; }
 
 debian-source-tree:
 	rm -rf "$(DEBIAN_SOURCE_DIR)"
