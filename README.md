@@ -759,7 +759,7 @@ When `DEBIAN_DISTRIBUTION` is not set, source package builds preserve the distri
 
 The `debian-orig-tarball` target generates the upstream `.orig.tar.gz` once. The PPA workflow uploads that tarball as an artifact and restores it before each Ubuntu series upload, so all series share the same upstream tarball and Launchpad does not reject a second series because the same tarball filename has different contents.
 
-The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy` and `noble` source uploads to `ppa:wpelevator/packages`. It requires these repository secrets:
+The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy` and `noble` source uploads to `ppa:wpelevator/packages`. It runs automatically when a plain semantic-version tag is pushed, verifies that the tag matches the upstream version in `debian/changelog`, and uses PPA revision `1`. Manual dispatch remains available for retries with an incremented PPA revision. It requires these repository secrets:
 
 - `LAUNCHPAD_GPG_KEY_ID`
 - `LAUNCHPAD_GPG_PRIVATE_KEY` containing the armored private key text
@@ -767,6 +767,7 @@ The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy` and `noble
 Before tagging a release, run the usual validation flow from this repository:
 
 ```bash
+docker compose run --rm packaging make debian-release-version-check RELEASE_VERSION=2.0.0
 docker compose build dev
 docker compose run --rm dev make format
 docker compose run --rm dev make test

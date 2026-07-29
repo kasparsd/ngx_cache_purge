@@ -2,6 +2,10 @@
 
 ## UNRELEASED
 
+### Changed
+
+- Run Launchpad PPA publishing automatically for semantic-version tag pushes and reject tags that do not match the upstream version in `debian/changelog`.
+
 ## 2.0.0 - 2026-07-29
 
 ### Changed
