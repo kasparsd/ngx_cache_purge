@@ -93,7 +93,7 @@ PURGE /proxy/passwd
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: \{\"key\": 
+--- response_body_like: \{\"key\":
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62
@@ -103,10 +103,10 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 === TEST 4: purge from empty cache
 --- request
 PURGE /proxy/passwd
---- error_code: 412
+--- error_code: 200
 --- response_headers
-Content-Type: text/html
---- response_body_like: 412 Precondition Failed
+Content-Type: application/json
+--- response_body_like: \{\"key\":
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62
@@ -149,7 +149,7 @@ PURGE /proxy/passwd
 --- error_code: 200
 --- response_headers
 Content-Type: application/json
---- response_body_like: \{\"key\": 
+--- response_body_like: \{\"key\":
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62
@@ -159,10 +159,10 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 === TEST 8: purge from empty cache (PURGE allowed)
 --- request
 PURGE /proxy/passwd
---- error_code: 412
+--- error_code: 200
 --- response_headers
-Content-Type: text/html
---- response_body_like: 412 Precondition Failed
+Content-Type: application/json
+--- response_body_like: \{\"key\":
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62

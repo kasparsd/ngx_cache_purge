@@ -173,10 +173,10 @@ qr/\[(warn|error|crit|alert|emerg)\]/
 --- config eval: $::config
 --- request
 PURGE /purge/proxy/passwd
---- error_code: 412
+--- error_code: 200
 --- response_headers
-Content-Type: text/html
---- response_body_like: 412 Precondition Failed
+Content-Type: application/json
+--- response_body_like: ^\{\"key\": \"\/proxy\/passwd\", \"cache_pilot\": \{\"purged\": \{\"exact\": \{\"hard\": 0, \"soft\": 0\}, \"wildcard\": \{\"hard\": 0, \"soft\": 0\}, \"tag\": \{\"hard\": 0, \"soft\": 0\}, \"all\": \{\"hard\": 0, \"soft\": 0\}\}\}\}$
 --- timeout: 10
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
@@ -321,4 +321,3 @@ Content-Type: text/plain
 --- no_error_log eval
 qr/\[(warn|error|crit|alert|emerg)\]/
 --- skip_nginx2: 4: < 0.8.3 or < 0.7.62
-

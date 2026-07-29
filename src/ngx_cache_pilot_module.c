@@ -71,6 +71,8 @@ static ngx_str_t
 ngx_http_cache_pilot_response_path_value(ngx_http_request_t *r);
 static ngx_str_t
 ngx_http_cache_pilot_decline_reason_value(ngx_http_request_t *r);
+static ngx_uint_t
+ngx_http_cache_pilot_decline_reason(ngx_http_request_t *r);
 static void
 ngx_http_cache_pilot_record_purge(ngx_http_request_t *r,
                                   ngx_http_cache_pilot_purge_stats_e purge_type, ngx_flag_t soft,
@@ -387,11 +389,21 @@ ngx_http_cache_pilot_dispatch_special(ngx_http_request_t *r,
             *handled = 1;
             rc = ngx_http_cache_index_purge(r, cache, tags);
 
-            if (rc == NGX_OK) {
+            if (rc == NGX_OK
+                    || (rc == NGX_DECLINED
+                        && ngx_http_cache_pilot_decline_reason(r)
+                        == NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND)) {
                 ngx_http_cache_pilot_record_purge_request(
                     r, NGX_HTTP_CACHE_PILOT_PURGE_STATS_TAG,
                     ngx_http_cache_pilot_request_mode(r, cplcf->conf->soft));
             }
+
+            if (rc == NGX_DECLINED
+                    && ngx_http_cache_pilot_decline_reason(r)
+                    == NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND) {
+                return NGX_OK;
+            }
+
             return rc;
         }
     }
@@ -1297,6 +1309,11 @@ ngx_http_cache_pilot_protocol_handler(ngx_http_request_t *r) {
         }
 
         if (rc == NGX_DECLINED) {
+            if (ngx_http_cache_pilot_decline_reason(r)
+                    == NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND) {
+                return ngx_http_cache_pilot_send_response(r);
+            }
+
             return NGX_HTTP_PRECONDITION_FAILED;
         }
 
@@ -2563,6 +2580,19 @@ ngx_http_cache_pilot_decline_reason_value(ngx_http_request_t *r) {
     return values[ctx->decline_reason];
 }
 
+static ngx_uint_t
+ngx_http_cache_pilot_decline_reason(ngx_http_request_t *r) {
+    ngx_http_cache_pilot_request_ctx_t  *ctx;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_cache_pilot_module);
+    if (ctx == NULL
+            || ctx->decline_reason == NGX_HTTP_CACHE_PILOT_DECLINE_UNSET) {
+        return NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND;
+    }
+
+    return ctx->decline_reason;
+}
+
 static void
 ngx_http_cache_pilot_mark_node_deleted(ngx_http_file_cache_t *cache,
                                        ngx_http_file_cache_node_t *node) {
@@ -2960,6 +2990,12 @@ ngx_http_cache_pilot_handler(ngx_http_request_t *r) {
         ngx_http_finalize_request(r, ngx_http_cache_pilot_send_response(r));
         return;
     case NGX_DECLINED:
+        if (ngx_http_cache_pilot_decline_reason(r)
+                == NGX_HTTP_CACHE_PILOT_DECLINE_NOT_FOUND) {
+            ngx_http_finalize_request(r, ngx_http_cache_pilot_send_response(r));
+            return;
+        }
+
         if (cplcf->resptype_configured
                 && cplcf->resptype == NGX_RESPONSE_TYPE_JSON) {
             ngx_http_finalize_request(r,
