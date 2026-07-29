@@ -1,5 +1,25 @@
+libnginx-mod-http-cache-pilot (2.0.0-1) unstable; urgency=medium
+
+  * Make known purge misses idempotent, returning success with zero purged counters instead of a precondition failure.
+  * Fail closed for unknown purge decline reasons.
+  * Keep cache-key indexing correct for cache writes without tags.
+
+ -- WPElevator Packaging Team <hi@wpelevator.com>  Wed, 29 Jul 2026 10:20:58 +0000
+
+libnginx-mod-http-cache-pilot (1.2.0-1) unstable; urgency=medium
+
+  * Add Ubuntu PPA packaging and published development containers.
+  * Expose cache-index health diagnostics and PR benchmark summaries.
+  * Fix purge handler inheritance in conditional child locations.
+  * Fix hard-purge accounting and stale cache-index cleanup.
+  * Mark the cache index ready after writes without tags.
+
+ -- WPElevator Packaging Team <hi@wpelevator.com>  Wed, 10 Jun 2026 10:55:33 +0000
+
 libnginx-mod-http-cache-pilot (1.1.0-1) unstable; urgency=medium
 
-  * Initial release.
+  * Initial Debian release.
+  * Add a GitHub Codespaces development container.
+  * Enforce the NGINX_CACHE requirement at module configuration time.
 
  -- WPElevator Packaging Team <hi@wpelevator.com>  Sat, 31 May 2026 05:30:14 +0000
