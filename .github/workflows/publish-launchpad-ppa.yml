@@ -78,7 +78,7 @@ jobs:
         env:
           LAUNCHPAD_GPG_KEY_ID: ${{ secrets.LAUNCHPAD_GPG_KEY_ID }}
           LAUNCHPAD_GPG_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_GPG_PRIVATE_KEY }}
-          LAUNCHPAD_PPA: ppa:kasparsd/testing
+          LAUNCHPAD_PPA: ppa:wpelevator/packages
         run: |
           docker compose run --rm \
             -e LAUNCHPAD_GPG_KEY_ID \
