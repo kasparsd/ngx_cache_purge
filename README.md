@@ -16,6 +16,7 @@ Tagged upstream releases are the packaging input. Distribution packages should s
 
 ## Compatibility And Limits
 
+- requires nginx `1.21.4` or newer; the module uses `ngx_rbtree_data()`, which older nginx releases do not provide
 - validated in source-build CI against nginx `1.26.3`, `1.28.3`, and `1.29.8`
 - packaged installs must target the matching distro nginx ABI (for example Debian/Ubuntu `libnginx-mod-http-cache-pilot`)
 - cache-tag indexing currently requires Linux
@@ -46,7 +47,7 @@ The Debian/Ubuntu packaging model is a distro-native dynamic module package name
 - let the package manager place `ngx_http_cache_pilot_module.so` under `/usr/lib/nginx/modules/`
 - let the package manager enable `mod-http-cache-pilot.conf` under `/etc/nginx/modules-enabled/`
 
-On Ubuntu, install it from the `ppa:wpelevator/packages` PPA, which publishes builds for Ubuntu 22.04 (`jammy`), 24.04 (`noble`), and 26.04 (`resolute`):
+On Ubuntu, install it from the `ppa:wpelevator/packages` PPA, which publishes builds for Ubuntu 24.04 (`noble`) and 26.04 (`resolute`):
 
 ```bash
 sudo add-apt-repository ppa:wpelevator/packages
@@ -57,6 +58,8 @@ sudo systemctl reload nginx
 ```
 
 The PPA builds each series against that series' own nginx ABI, so keep the module and `nginx` packages on the same Ubuntu release. On other Debian derivatives, build the package yourself from this repository as described in [Development](#development).
+
+Ubuntu 22.04 (`jammy`) is not supported. It ships nginx `1.18.0`, which predates the `ngx_rbtree_data()` API this module requires, and it has no `nginx-dev` package or `nginx-abi-*` virtual package, so the distro-native dynamic-module packaging this repository uses is not available there.
 
 If your distro splits required upstream nginx cache modules into separate dynamic-module packages, make sure those modules are enabled before `mod-http-cache-pilot.conf`.
 
@@ -710,10 +713,6 @@ To validate source-package generation for the Ubuntu series without uploading:
 
 ```bash
 docker compose run --rm packaging make debian-source-package \
-  DEBIAN_DISTRIBUTION=jammy \
-  DEBIAN_VERSION_SUFFIX=+ppa1~jammy1
-
-docker compose run --rm packaging make debian-source-package \
   DEBIAN_DISTRIBUTION=noble \
   DEBIAN_VERSION_SUFFIX=+ppa1~noble1
 
@@ -761,13 +760,13 @@ Treat the Git tag as the upstream module version. Use plain semantic versions su
 
 Use `debian/changelog` for the Debian package version. For an upstream `1.2.0` release, the first package upload should be `1.2.0-1`. If you need to rebuild or republish the same upstream release without changing the upstream version, bump only the Debian revision (`1.2.0-2`, `1.2.0-3`, and so on). Keep the release notes aligned across `CHANGELOG.md` and `debian/changelog`, but do not collapse them into one file: Debian tooling reads `debian/changelog` directly, so it needs to remain in Debian's package changelog format even when it is summarizing the same release.
 
-PPA uploads append an Ubuntu-series suffix to the Debian package version in a temporary build tree under `.pkg-build/`; the working-tree `debian/changelog` is not modified. Use suffixes like `+ppa1~jammy1`, `+ppa1~noble1`, and `+ppa1~resolute1`, incrementing the `ppa` revision when rebuilding the same Debian package version for Launchpad. Keep the series part of the suffix alphabetically ordered against the series it targets so that an Ubuntu release upgrade always sees an increasing package version.
+PPA uploads append an Ubuntu-series suffix to the Debian package version in a temporary build tree under `.pkg-build/`; the working-tree `debian/changelog` is not modified. Use suffixes like `+ppa1~noble1` and `+ppa1~resolute1`, incrementing the `ppa` revision when rebuilding the same Debian package version for Launchpad. Keep the series part of the suffix alphabetically ordered against the series it targets so that an Ubuntu release upgrade always sees an increasing package version.
 
 When `DEBIAN_DISTRIBUTION` is not set, source package builds preserve the distribution from `debian/changelog`. Set `DEBIAN_DISTRIBUTION` only when building for a specific target series such as a Launchpad PPA upload.
 
 The `debian-orig-tarball` target generates the upstream `.orig.tar.gz` once. The PPA workflow uploads that tarball as an artifact and restores it before each Ubuntu series upload, so all series share the same upstream tarball and Launchpad does not reject a second series because the same tarball filename has different contents.
 
-The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy`, `noble`, and `resolute` source uploads to `ppa:wpelevator/packages`. It runs automatically when a plain semantic-version tag is pushed, verifies that the tag matches the upstream version in `debian/changelog`, and uses PPA revision `1`. Manual dispatch remains available for publishing a ref that was tagged before this automation existed and for retries with an incremented PPA revision. It requires these repository secrets:
+The `Publish Launchpad PPA` GitHub Actions workflow publishes `noble` and `resolute` source uploads to `ppa:wpelevator/packages`. It runs automatically when a plain semantic-version tag is pushed, verifies that the tag matches the upstream version in `debian/changelog`, and uses PPA revision `1`. Manual dispatch remains available for publishing a ref that was tagged before this automation existed and for retries with an incremented PPA revision. It requires these repository secrets:
 
 - `LAUNCHPAD_GPG_KEY_ID`
 - `LAUNCHPAD_GPG_PRIVATE_KEY` containing the armored private key text
@@ -781,7 +780,6 @@ docker compose run --rm dev make format
 docker compose run --rm dev make test
 docker compose pull packaging
 docker compose run --rm packaging make debian-package-smoke
-docker compose run --rm packaging make debian-source-package DEBIAN_DISTRIBUTION=jammy DEBIAN_VERSION_SUFFIX=+ppa1~jammy1
 docker compose run --rm packaging make debian-source-package DEBIAN_DISTRIBUTION=noble DEBIAN_VERSION_SUFFIX=+ppa1~noble1
 docker compose run --rm packaging make debian-source-package DEBIAN_DISTRIBUTION=resolute DEBIAN_VERSION_SUFFIX=+ppa1~resolute1
 ```

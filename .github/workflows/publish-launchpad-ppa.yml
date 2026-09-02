@@ -53,8 +53,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - series: jammy
-            series_suffix: jammy1
           - series: noble
             series_suffix: noble1
           - series: resolute

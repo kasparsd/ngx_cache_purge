@@ -4,12 +4,17 @@
 
 ### Added
 
-- Publish Ubuntu 26.04 (`resolute`) PPA source uploads alongside `jammy` and `noble`.
+- Publish Ubuntu 26.04 (`resolute`) PPA source uploads alongside `noble`.
 - Document installing the module from `ppa:wpelevator/packages` in the packaged install instructions.
+- Document the minimum supported nginx version of `1.21.4`.
 
 ### Changed
 
 - Run Launchpad publishing to `ppa:wpelevator/packages` automatically for semantic-version tag pushes and reject tags that do not match the upstream version in `debian/changelog`.
+
+### Removed
+
+- Stop publishing Ubuntu 22.04 (`jammy`) PPA uploads. Jammy ships nginx `1.18.0`, which lacks the `ngx_rbtree_data()` API this module requires, and provides no `nginx-dev` or `nginx-abi-*` packages, so its builds could never produce an installable package.
 
 ## 2.0.0 - 2026-07-29
 
