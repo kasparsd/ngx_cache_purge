@@ -2,6 +2,15 @@
 
 ## UNRELEASED
 
+### Added
+
+- Publish Ubuntu 26.04 (`resolute`) PPA source uploads alongside `jammy` and `noble`.
+- Document installing the module from `ppa:wpelevator/packages` in the packaged install instructions.
+
+### Changed
+
+- Run Launchpad publishing to `ppa:wpelevator/packages` automatically for semantic-version tag pushes and reject tags that do not match the upstream version in `debian/changelog`.
+
 ## 2.0.0 - 2026-07-29
 
 ### Changed

@@ -1,6 +1,9 @@
 name: Publish Launchpad PPA
 
 on:
+  push:
+    tags:
+      - '[0-9]*.[0-9]*.[0-9]*'
   workflow_dispatch:
     inputs:
       ppa_revision:
@@ -28,6 +31,10 @@ jobs:
         continue-on-error: true
         run: docker compose pull packaging
 
+      - name: Verify tagged release version
+        if: github.ref_type == 'tag'
+        run: docker compose run --rm packaging make debian-release-version-check RELEASE_VERSION="${GITHUB_REF_NAME}"
+
       - name: Build shared source tarball
         run: docker compose run --rm packaging make debian-orig-tarball
 
@@ -50,6 +57,8 @@ jobs:
             series_suffix: jammy1
           - series: noble
             series_suffix: noble1
+          - series: resolute
+            series_suffix: resolute1
 
     env:
       PPA_REVISION: ${{ github.event.inputs.ppa_revision || '1' }}
@@ -71,7 +80,7 @@ jobs:
         env:
           LAUNCHPAD_GPG_KEY_ID: ${{ secrets.LAUNCHPAD_GPG_KEY_ID }}
           LAUNCHPAD_GPG_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_GPG_PRIVATE_KEY }}
-          LAUNCHPAD_PPA: ppa:kasparsd/testing
+          LAUNCHPAD_PPA: ppa:wpelevator/packages
         run: |
           docker compose run --rm \
             -e LAUNCHPAD_GPG_KEY_ID \
@@ -79,7 +88,7 @@ jobs:
             -e LAUNCHPAD_PPA \
             packaging make launchpad-ppa-upload \
               DEBIAN_DISTRIBUTION=${{ matrix.series }} \
-              DEBIAN_VERSION_SUFFIX=+ppa${PPA_REVISION}~${{ matrix.series_suffix }}
+              DEBIAN_VERSION_SUFFIX="+ppa${PPA_REVISION}~${{ matrix.series_suffix }}"
 
       - name: Upload source package artifacts
         if: always()
