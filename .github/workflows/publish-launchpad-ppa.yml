@@ -57,6 +57,8 @@ jobs:
             series_suffix: jammy1
           - series: noble
             series_suffix: noble1
+          - series: resolute
+            series_suffix: resolute1
 
     env:
       PPA_REVISION: ${{ github.event.inputs.ppa_revision || '1' }}

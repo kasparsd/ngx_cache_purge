@@ -46,13 +46,17 @@ The Debian/Ubuntu packaging model is a distro-native dynamic module package name
 - let the package manager place `ngx_http_cache_pilot_module.so` under `/usr/lib/nginx/modules/`
 - let the package manager enable `mod-http-cache-pilot.conf` under `/etc/nginx/modules-enabled/`
 
-When a repository or PPA publishes this package, the install flow is:
+On Ubuntu, install it from the `ppa:wpelevator/packages` PPA, which publishes builds for Ubuntu 22.04 (`jammy`), 24.04 (`noble`), and 26.04 (`resolute`):
 
 ```bash
+sudo add-apt-repository ppa:wpelevator/packages
+sudo apt update
 sudo apt install nginx libnginx-mod-http-cache-pilot
 sudo nginx -t
 sudo systemctl reload nginx
 ```
+
+The PPA builds each series against that series' own nginx ABI, so keep the module and `nginx` packages on the same Ubuntu release. On other Debian derivatives, build the package yourself from this repository as described in [Development](#development).
 
 If your distro splits required upstream nginx cache modules into separate dynamic-module packages, make sure those modules are enabled before `mod-http-cache-pilot.conf`.
 
@@ -712,6 +716,10 @@ docker compose run --rm packaging make debian-source-package \
 docker compose run --rm packaging make debian-source-package \
   DEBIAN_DISTRIBUTION=noble \
   DEBIAN_VERSION_SUFFIX=+ppa1~noble1
+
+docker compose run --rm packaging make debian-source-package \
+  DEBIAN_DISTRIBUTION=resolute \
+  DEBIAN_VERSION_SUFFIX=+ppa1~resolute1
 ```
 
 To sign and upload to `ppa:wpelevator/packages`, provide a Launchpad-registered GPG key id. If `DEBIAN_GPG_PRIVATE_KEY` is set, the signed source-package target imports it before signing; otherwise it uses the container's existing GPG keyring.
@@ -753,13 +761,13 @@ Treat the Git tag as the upstream module version. Use plain semantic versions su
 
 Use `debian/changelog` for the Debian package version. For an upstream `1.2.0` release, the first package upload should be `1.2.0-1`. If you need to rebuild or republish the same upstream release without changing the upstream version, bump only the Debian revision (`1.2.0-2`, `1.2.0-3`, and so on). Keep the release notes aligned across `CHANGELOG.md` and `debian/changelog`, but do not collapse them into one file: Debian tooling reads `debian/changelog` directly, so it needs to remain in Debian's package changelog format even when it is summarizing the same release.
 
-PPA uploads append an Ubuntu-series suffix to the Debian package version in a temporary build tree under `.pkg-build/`; the working-tree `debian/changelog` is not modified. Use suffixes like `+ppa1~jammy1` and `+ppa1~noble1`, incrementing the `ppa` revision when rebuilding the same Debian package version for Launchpad.
+PPA uploads append an Ubuntu-series suffix to the Debian package version in a temporary build tree under `.pkg-build/`; the working-tree `debian/changelog` is not modified. Use suffixes like `+ppa1~jammy1`, `+ppa1~noble1`, and `+ppa1~resolute1`, incrementing the `ppa` revision when rebuilding the same Debian package version for Launchpad. Keep the series part of the suffix alphabetically ordered against the series it targets so that an Ubuntu release upgrade always sees an increasing package version.
 
 When `DEBIAN_DISTRIBUTION` is not set, source package builds preserve the distribution from `debian/changelog`. Set `DEBIAN_DISTRIBUTION` only when building for a specific target series such as a Launchpad PPA upload.
 
 The `debian-orig-tarball` target generates the upstream `.orig.tar.gz` once. The PPA workflow uploads that tarball as an artifact and restores it before each Ubuntu series upload, so all series share the same upstream tarball and Launchpad does not reject a second series because the same tarball filename has different contents.
 
-The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy` and `noble` source uploads to `ppa:wpelevator/packages`. It runs automatically when a plain semantic-version tag is pushed, verifies that the tag matches the upstream version in `debian/changelog`, and uses PPA revision `1`. Manual dispatch remains available for retries with an incremented PPA revision. It requires these repository secrets:
+The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy`, `noble`, and `resolute` source uploads to `ppa:wpelevator/packages`. It runs automatically when a plain semantic-version tag is pushed, verifies that the tag matches the upstream version in `debian/changelog`, and uses PPA revision `1`. Manual dispatch remains available for publishing a ref that was tagged before this automation existed and for retries with an incremented PPA revision. It requires these repository secrets:
 
 - `LAUNCHPAD_GPG_KEY_ID`
 - `LAUNCHPAD_GPG_PRIVATE_KEY` containing the armored private key text
@@ -767,7 +775,7 @@ The `Publish Launchpad PPA` GitHub Actions workflow publishes `jammy` and `noble
 Before tagging a release, run the usual validation flow from this repository:
 
 ```bash
-docker compose run --rm packaging make debian-release-version-check RELEASE_VERSION=2.0.0
+docker compose run --rm packaging make debian-release-version-check RELEASE_VERSION="$RELEASE_VERSION"
 docker compose build dev
 docker compose run --rm dev make format
 docker compose run --rm dev make test
@@ -775,7 +783,10 @@ docker compose pull packaging
 docker compose run --rm packaging make debian-package-smoke
 docker compose run --rm packaging make debian-source-package DEBIAN_DISTRIBUTION=jammy DEBIAN_VERSION_SUFFIX=+ppa1~jammy1
 docker compose run --rm packaging make debian-source-package DEBIAN_DISTRIBUTION=noble DEBIAN_VERSION_SUFFIX=+ppa1~noble1
+docker compose run --rm packaging make debian-source-package DEBIAN_DISTRIBUTION=resolute DEBIAN_VERSION_SUFFIX=+ppa1~resolute1
 ```
+
+`debian-release-version-check` is the same gate the tag-triggered workflow runs, so running it locally with the version you are about to tag catches a `debian/changelog` mismatch before the tag is pushed.
 
 Release checklist:
 
@@ -784,6 +795,8 @@ Release checklist:
 3. Commit the release preparation.
 4. Create an annotated Git tag for the upstream version, for example `git tag -a 1.2.0 -m "Release 1.2.0"`.
 5. Push the release commit and tag, then publish the GitHub release from that tag.
+
+Pushing the tag in step 5 starts the PPA upload, and Launchpad rejects a re-upload of a version it has already accepted. Push the release commit first and let the test workflow finish before pushing the tag; if a bad upload does land, recover by dispatching the workflow again with an incremented PPA revision rather than by re-tagging.
 
 ### Benchmark suite
 
